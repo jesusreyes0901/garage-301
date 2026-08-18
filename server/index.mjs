@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,11 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import mysql from 'mysql2/promise'
 
+const ON_RAILWAY = Boolean(
+  process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID,
+)
+if (!ON_RAILWAY) dotenv.config()
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const PORT = Number(process.env.PORT || 3001)
@@ -15,12 +20,44 @@ const JWT_SECRET = process.env.JWT_SECRET || 'garage301-dev'
 const MAX_ATTEMPTS = 4
 const locks = new Map()
 
-const dbConfig = {
-  host: process.env.MYSQLHOST || process.env.MYSQL_HOST || '127.0.0.1',
-  port: Number(process.env.MYSQLPORT || process.env.MYSQL_PORT || 3306),
-  user: process.env.MYSQLUSER || process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQLPASSWORD ?? process.env.MYSQL_PASSWORD ?? '',
-  multipleStatements: true,
+function envFirst(...keys) {
+  for (const key of keys) {
+    const value = process.env[key]
+    if (value != null && String(value).trim() !== '') return String(value).trim()
+  }
+  return ''
+}
+
+function isLoopback(host) {
+  return !host || host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
+
+function readMysqlConfig() {
+  const urlRaw = envFirst('MYSQL_URL', 'DATABASE_URL', 'MYSQL_PRIVATE_URL', 'MYSQL_PUBLIC_URL')
+  if (urlRaw) {
+    try {
+      const u = new URL(urlRaw)
+      if (u.protocol.startsWith('mysql') && !isLoopback(u.hostname)) {
+        return {
+          host: u.hostname,
+          port: Number(u.port || 3306),
+          user: decodeURIComponent(u.username),
+          password: decodeURIComponent(u.password),
+          database: decodeURIComponent((u.pathname || '').replace(/^\//, '').split('?')[0] || '') || undefined,
+        }
+      }
+    } catch {
+      /* usa variables sueltas */
+    }
+  }
+  const host = envFirst('MYSQLHOST', 'MYSQL_HOST')
+  return {
+    host: isLoopback(host) ? host || '127.0.0.1' : host,
+    port: Number(envFirst('MYSQLPORT', 'MYSQL_PORT') || 3306),
+    user: envFirst('MYSQLUSER', 'MYSQL_USER') || 'root',
+    password: envFirst('MYSQLPASSWORD', 'MYSQL_PASSWORD'),
+    database: envFirst('MYSQLDATABASE', 'MYSQL_DATABASE') || 'garage301',
+  }
 }
 
 function uid(prefix) {
@@ -296,10 +333,37 @@ async function seedIfEmpty(pool) {
 }
 
 async function start() {
-  const dbName = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'garage301'
-  const hosted = Boolean(process.env.MYSQLHOST || process.env.RAILWAY_ENVIRONMENT)
+  const mysqlKeys = Object.keys(process.env)
+    .filter((k) => /MYSQL|DATABASE_URL/i.test(k))
+    .sort()
+  console.log('Variables MySQL visibles:', mysqlKeys.join(', ') || '(ninguna)')
+
+  const parsed = readMysqlConfig()
+  const dbName = parsed.database || process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'garage301'
+  const dbConfig = {
+    host: parsed.host,
+    port: parsed.port,
+    user: parsed.user,
+    password: parsed.password,
+    multipleStatements: true,
+  }
+
+  if (ON_RAILWAY && isLoopback(dbConfig.host)) {
+    console.error('\nRailway no recibió el host de MySQL (sigue en 127.0.0.1).')
+    console.error('En la APP (no en MySQL) pestaña Variables, RAW Editor, pega:')
+    console.error('MYSQLHOST=${{MySQL.MYSQLHOST}}')
+    console.error('MYSQLPORT=${{MySQL.MYSQLPORT}}')
+    console.error('MYSQLUSER=${{MySQL.MYSQLUSER}}')
+    console.error('MYSQLPASSWORD=${{MySQL.MYSQLPASSWORD}}')
+    console.error('MYSQLDATABASE=${{MySQL.MYSQLDATABASE}}')
+    console.error('MYSQL_URL=${{MySQL.MYSQL_URL}}')
+    console.error('Si tu base no se llama MySQL, cambia MySQL por el nombre de esa tarjeta.')
+    console.error('Variables vistas:', mysqlKeys.join(', ') || '(ninguna)')
+    process.exit(1)
+  }
+
   try {
-    if (!hosted) {
+    if (!ON_RAILWAY) {
       const admin = await mysql.createConnection(dbConfig)
       await admin.query(
         `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
@@ -315,11 +379,22 @@ async function start() {
   }
 
   const pool = mysql.createPool({ ...dbConfig, database: dbName, waitForConnections: true })
-  try {
-    await pool.query('SELECT 1')
-  } catch (err) {
+  let lastErr
+  for (let i = 1; i <= 8; i++) {
+    try {
+      await pool.query('SELECT 1')
+      lastErr = null
+      break
+    } catch (err) {
+      lastErr = err
+      console.error(`Esperando MySQL (${i}/8) ${dbConfig.host}:${dbConfig.port}…`, err.message)
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+  }
+  if (lastErr) {
     console.error('\nNo se pudo abrir la base de datos', dbName)
-    console.error(err.message)
+    console.error('Host:', dbConfig.host, 'Puerto:', dbConfig.port, 'Usuario:', dbConfig.user)
+    console.error(lastErr.message)
     process.exit(1)
   }
   await pool.query(SCHEMA)
