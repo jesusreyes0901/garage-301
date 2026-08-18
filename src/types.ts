@@ -1,0 +1,124 @@
+export type Role = 'taller' | 'cliente'
+
+export type AppointmentStatus =
+  | 'pendiente'
+  | 'confirmada'
+  | 'en_proceso'
+  | 'completada'
+  | 'cancelada'
+
+export type OrderStatus =
+  | 'abierta'
+  | 'en_proceso'
+  | 'espera_refaccion'
+  | 'lista'
+  | 'entregada'
+
+export type VehicleStatus = 'activo' | 'en_taller' | 'entregado'
+
+export interface User {
+  id: string
+  name: string
+  username: string
+  email: string
+  password: string
+  role: Role
+  phone: string
+  address: string
+  avatar: string
+  recovery?: {
+    hash: string
+    expiresAt: number
+    tries: number
+  }
+}
+
+export interface Vehicle {
+  id: string
+  plate: string
+  brand: string
+  model: string
+  year: number
+  color: string
+  vin: string
+  ownerId: string
+  mileage: number
+  status: VehicleStatus
+  photo: string
+}
+
+export interface Appointment {
+  id: string
+  clientId: string
+  vehicleId: string
+  date: string
+  time: string
+  service: string
+  status: AppointmentStatus
+  notes: string
+  orderId?: string
+}
+
+export interface WorkOrder {
+  id: string
+  folio: string
+  vehicleId: string
+  clientId: string
+  mechanic: string
+  description: string
+  status: OrderStatus
+  createdAt: string
+  labor: number
+  parts: { partId: string; qty: number }[]
+}
+
+export interface Part {
+  id: string
+  sku: string
+  name: string
+  category: string
+  stock: number
+  minStock: number
+  price: number
+  cost: number
+}
+
+export interface PartRequest {
+  id: string
+  clientId: string
+  vehicleId: string
+  partId: string
+  qty: number
+  status: 'solicitada' | 'apartada' | 'entregada' | 'rechazada'
+  createdAt: string
+}
+
+export interface Observation {
+  id: string
+  vehicleId: string
+  authorId: string
+  text: string
+  photos: string[]
+  createdAt: string
+}
+
+export interface AppState {
+  users: User[]
+  vehicles: Vehicle[]
+  appointments: Appointment[]
+  orders: WorkOrder[]
+  parts: Part[]
+  partRequests: PartRequest[]
+  observations: Observation[]
+}
+
+export const SERVICES = [
+  'Afinación mayor',
+  'Cambio de aceite',
+  'Frenos',
+  'Suspensión',
+  'Diagnóstico computarizado',
+  'Sistema eléctrico',
+  'Cambio de clutch',
+  'Otro',
+] as const
