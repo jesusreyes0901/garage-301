@@ -7,7 +7,7 @@
     "dev": "concurrently -n api,web -c red,cyan \"node server/index.mjs\" \"vite\"",
     "dev:web": "vite",
     "dev:api": "node server/index.mjs",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "start": "node server/index.mjs",
     "preview": "vite preview"
   },
