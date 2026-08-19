@@ -38,6 +38,7 @@ function isLoopback(host) {
 
 function needsSsl(host) {
   if (envFirst('MYSQL_SSL', 'MYSQLSSL') === 'false') return false
+  if (ON_CLOUD) return true
   if (envFirst('MYSQL_SSL', 'MYSQLSSL') === 'true') return true
   return /aiven|railway|amazonaws|azure|render/i.test(host || '')
 }
@@ -46,14 +47,15 @@ function readMysqlConfig() {
   const urlRaw = envFirst('MYSQL_URL', 'DATABASE_URL', 'MYSQL_PRIVATE_URL', 'MYSQL_PUBLIC_URL')
   if (urlRaw) {
     try {
-      const u = new URL(urlRaw)
+      const u = new URL(urlRaw.replace(/^mysql:\/\//, 'mysql://'))
       if (u.protocol.startsWith('mysql') && !isLoopback(u.hostname)) {
+        const dbFromUrl = decodeURIComponent((u.pathname || '').replace(/^\//, '').split('?')[0] || '')
         return {
           host: u.hostname,
           port: Number(u.port || 3306),
           user: decodeURIComponent(u.username),
           password: decodeURIComponent(u.password),
-          database: decodeURIComponent((u.pathname || '').replace(/^\//, '').split('?')[0] || '') || undefined,
+          database: dbFromUrl || undefined,
         }
       }
     } catch {
@@ -61,12 +63,13 @@ function readMysqlConfig() {
     }
   }
   const host = envFirst('MYSQLHOST', 'MYSQL_HOST')
+  const aiven = /aiven/i.test(host)
   return {
     host: isLoopback(host) ? host || '127.0.0.1' : host,
     port: Number(envFirst('MYSQLPORT', 'MYSQL_PORT') || 3306),
     user: envFirst('MYSQLUSER', 'MYSQL_USER') || 'root',
     password: envFirst('MYSQLPASSWORD', 'MYSQL_PASSWORD'),
-    database: envFirst('MYSQLDATABASE', 'MYSQL_DATABASE') || 'garage301',
+    database: envFirst('MYSQLDATABASE', 'MYSQL_DATABASE') || (aiven ? 'defaultdb' : 'garage301'),
   }
 }
 
@@ -342,6 +345,15 @@ async function seedIfEmpty(pool) {
   console.log('MySQL: datos de prueba cargados (taller123 / cliente123).')
 }
 
+async function applySchema(pool) {
+  const statements = SCHEMA.split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  for (const sql of statements) {
+    await pool.query(sql)
+  }
+}
+
 async function start() {
   const mysqlKeys = Object.keys(process.env)
     .filter((k) => /MYSQL|DATABASE_URL/i.test(k))
@@ -355,19 +367,24 @@ async function start() {
     port: parsed.port,
     user: parsed.user,
     password: parsed.password,
-    multipleStatements: true,
+    multipleStatements: false,
+    connectTimeout: 20000,
   }
-  if (needsSsl(dbConfig.host)) {
+  if (ON_CLOUD || needsSsl(dbConfig.host)) {
     dbConfig.ssl = { rejectUnauthorized: false }
   }
 
   if (ON_CLOUD && isLoopback(dbConfig.host)) {
     console.error('\nNo llegó el host de MySQL (sigue en 127.0.0.1).')
-    console.error('En Render → Environment agrega MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE.')
+    console.error('En Render → Environment agrega MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE=defaultdb.')
     console.error('Cópialos de Aiven → Overview. El puerto de Aiven NO suele ser 3306.')
     console.error('Variables vistas:', mysqlKeys.join(', ') || '(ninguna)')
     process.exit(1)
   }
+
+  console.log(
+    `Conectando MySQL host=${dbConfig.host} puerto=${dbConfig.port} db=${dbName} user=${dbConfig.user} ssl=${Boolean(dbConfig.ssl)}`,
+  )
 
   try {
     if (!ON_CLOUD && !needsSsl(dbConfig.host)) {
@@ -403,7 +420,7 @@ async function start() {
     console.error(lastErr.message)
     process.exit(1)
   }
-  await pool.query(SCHEMA)
+  await applySchema(pool)
   await seedIfEmpty(pool)
 
   const app = express()
