@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "type": "web",
+      "name": "garage-301",
+      "runtime": "node",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npm start",
+      "envVars": [
+        { "key": "JWT_SECRET", "generateValue": true }
+      ]
+    }
+  ]
+}

@@ -8,10 +8,14 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import mysql from 'mysql2/promise'
 
-const ON_RAILWAY = Boolean(
-  process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID,
+const ON_CLOUD = Boolean(
+  process.env.RAILWAY_ENVIRONMENT ||
+    process.env.RAILWAY_ENVIRONMENT_ID ||
+    process.env.RAILWAY_PROJECT_ID ||
+    process.env.RENDER ||
+    process.env.RENDER_SERVICE_ID,
 )
-if (!ON_RAILWAY) dotenv.config()
+if (!ON_CLOUD) dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -30,6 +34,12 @@ function envFirst(...keys) {
 
 function isLoopback(host) {
   return !host || host === '127.0.0.1' || host === 'localhost' || host === '::1'
+}
+
+function needsSsl(host) {
+  if (envFirst('MYSQL_SSL', 'MYSQLSSL') === 'false') return false
+  if (envFirst('MYSQL_SSL', 'MYSQLSSL') === 'true') return true
+  return /aiven|railway|amazonaws|azure|render/i.test(host || '')
 }
 
 function readMysqlConfig() {
@@ -347,23 +357,20 @@ async function start() {
     password: parsed.password,
     multipleStatements: true,
   }
+  if (needsSsl(dbConfig.host)) {
+    dbConfig.ssl = { rejectUnauthorized: false }
+  }
 
-  if (ON_RAILWAY && isLoopback(dbConfig.host)) {
-    console.error('\nRailway no recibió el host de MySQL (sigue en 127.0.0.1).')
-    console.error('En la APP (no en MySQL) pestaña Variables, RAW Editor, pega:')
-    console.error('MYSQLHOST=${{MySQL.MYSQLHOST}}')
-    console.error('MYSQLPORT=${{MySQL.MYSQLPORT}}')
-    console.error('MYSQLUSER=${{MySQL.MYSQLUSER}}')
-    console.error('MYSQLPASSWORD=${{MySQL.MYSQLPASSWORD}}')
-    console.error('MYSQLDATABASE=${{MySQL.MYSQLDATABASE}}')
-    console.error('MYSQL_URL=${{MySQL.MYSQL_URL}}')
-    console.error('Si tu base no se llama MySQL, cambia MySQL por el nombre de esa tarjeta.')
+  if (ON_CLOUD && isLoopback(dbConfig.host)) {
+    console.error('\nNo llegó el host de MySQL (sigue en 127.0.0.1).')
+    console.error('En Render → Environment agrega MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE.')
+    console.error('Cópialos de Aiven → Overview. El puerto de Aiven NO suele ser 3306.')
     console.error('Variables vistas:', mysqlKeys.join(', ') || '(ninguna)')
     process.exit(1)
   }
 
   try {
-    if (!ON_RAILWAY) {
+    if (!ON_CLOUD && !needsSsl(dbConfig.host)) {
       const admin = await mysql.createConnection(dbConfig)
       await admin.query(
         `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
@@ -372,7 +379,6 @@ async function start() {
     }
   } catch (err) {
     console.error('\nNo se pudo conectar a MySQL.')
-    console.error('En local: enciende XAMPP. En Railway: conecta el servicio MySQL a esta app.')
     console.error('Host:', dbConfig.host, 'Usuario:', dbConfig.user, 'Puerto:', dbConfig.port)
     console.error(err.message)
     process.exit(1)
