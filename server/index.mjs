@@ -345,6 +345,22 @@ async function seedIfEmpty(pool) {
   console.log('MySQL: datos de prueba cargados (taller123 / cliente123).')
 }
 
+async function wipeDemoSeed(pool) {
+  const [rows] = await pool.query(
+    "SELECT id FROM users WHERE id IN ('u-taller','u-cliente','u-cliente-2')",
+  )
+  if (!rows.length) return
+  await pool.query("DELETE FROM observations WHERE id IN ('ob1','ob2')")
+  await pool.query("DELETE FROM part_requests WHERE id = 'r1'")
+  await pool.query("DELETE FROM appointments WHERE id IN ('a1','a2','a3')")
+  await pool.query("DELETE FROM order_parts WHERE order_id IN ('o1','o2')")
+  await pool.query("DELETE FROM work_orders WHERE id IN ('o1','o2')")
+  await pool.query("DELETE FROM vehicles WHERE id IN ('v1','v2','v3')")
+  await pool.query("DELETE FROM parts WHERE id IN ('p1','p2','p3','p4','p5','p6')")
+  await pool.query("DELETE FROM users WHERE id IN ('u-taller','u-cliente','u-cliente-2')")
+  console.log('Datos de demostración eliminados. El taller queda con tus cuentas reales.')
+}
+
 async function applySchema(pool) {
   const statements = SCHEMA.split(';')
     .map((s) => s.trim())
@@ -421,7 +437,8 @@ async function start() {
     process.exit(1)
   }
   await applySchema(pool)
-  await seedIfEmpty(pool)
+  if (ON_CLOUD) await wipeDemoSeed(pool)
+  else await seedIfEmpty(pool)
 
   const app = express()
   app.use(cors())
