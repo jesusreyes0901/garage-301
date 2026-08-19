@@ -51,7 +51,7 @@ export function ClienteAgendar() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!user || !vehicleId) return
+    if (!user) return
     if (!time) {
       setError('Elige un horario disponible.')
       return
@@ -60,7 +60,7 @@ export function ClienteAgendar() {
     setError(null)
     const result = await addAppointment({
       clientId: user.id,
-      vehicleId,
+      vehicleId: vehicleId || '',
       date,
       time,
       service,
@@ -83,13 +83,11 @@ export function ClienteAgendar() {
         </div>
       </div>
       <div className="card" style={{ maxWidth: 880 }}>
-        {mine.length === 0 ? (
-          <p className="empty">No hay vehículos asociados a tu cuenta.</p>
-        ) : (
           <form className="form" onSubmit={onSubmit}>
             <label>
-              Vehículo
+              Vehículo (opcional)
               <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                <option value="">Sin vehículo registrado — lo indico en notas</option>
                 {mine.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.plate} · {v.brand} {v.model}
@@ -97,6 +95,11 @@ export function ClienteAgendar() {
                 ))}
               </select>
             </label>
+            {mine.length === 0 && (
+              <p className="slot-note">
+                Puedes agendar ahora y anotar marca, modelo o placa en las observaciones. El auto se puede dar de alta después.
+              </p>
+            )}
             <div className="schedule-layout">
               <div>
                 <div className="cal-head">
@@ -204,7 +207,6 @@ export function ClienteAgendar() {
               {busy ? 'Agendando…' : 'Confirmar solicitud'}
             </button>
           </form>
-        )}
       </div>
     </>
   )

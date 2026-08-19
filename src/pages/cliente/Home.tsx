@@ -65,7 +65,7 @@ export function ClienteHome() {
                 <div>
                   <strong>{a.service}</strong>
                   <div style={{ color: 'var(--muted)', fontSize: 13 }}>
-                    {formatDay(a.date)} {a.time} · {v?.plate}
+                    {formatDay(a.date)} {a.time} · {v?.plate ?? 'Sin vehículo'}
                   </div>
                 </div>
                 <StatusBadge value={a.status} />

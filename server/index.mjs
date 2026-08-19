@@ -148,7 +148,7 @@ async function getState(pool) {
     appointments: appointments.map((a) => ({
       id: a.id,
       clientId: a.client_id,
-      vehicleId: a.vehicle_id,
+      vehicleId: a.vehicle_id || '',
       date: typeof a.date === 'string' ? a.date.slice(0, 10) : a.date.toISOString().slice(0, 10),
       time: String(a.time).slice(0, 5),
       service: a.service,
@@ -208,12 +208,16 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(160) NOT NULL UNIQUE,
   password VARCHAR(120) NOT NULL,
   role ENUM('taller','cliente') NOT NULL,
-  phone VARCHAR(40) DEFAULT '',
+  phone VARCHAR(48) DEFAULT '',
   address VARCHAR(200) DEFAULT '',
   avatar LONGTEXT,
   recovery_hash VARCHAR(120) DEFAULT NULL,
   recovery_expires DATETIME DEFAULT NULL,
-  recovery_tries INT DEFAULT 0
+  recovery_tries INT DEFAULT 0,
+  email_verified TINYINT NOT NULL DEFAULT 1,
+  verify_hash VARCHAR(120) DEFAULT NULL,
+  verify_expires DATETIME DEFAULT NULL,
+  verify_tries INT DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS vehicles (
   id VARCHAR(32) PRIMARY KEY,
@@ -242,7 +246,7 @@ CREATE TABLE IF NOT EXISTS parts (
 CREATE TABLE IF NOT EXISTS work_orders (
   id VARCHAR(32) PRIMARY KEY,
   folio VARCHAR(20) NOT NULL UNIQUE,
-  vehicle_id VARCHAR(32) NOT NULL,
+  vehicle_id VARCHAR(32) DEFAULT NULL,
   client_id VARCHAR(32) NOT NULL,
   mechanic VARCHAR(120) DEFAULT '',
   description TEXT,
@@ -263,7 +267,7 @@ CREATE TABLE IF NOT EXISTS order_parts (
 CREATE TABLE IF NOT EXISTS appointments (
   id VARCHAR(32) PRIMARY KEY,
   client_id VARCHAR(32) NOT NULL,
-  vehicle_id VARCHAR(32) NOT NULL,
+  vehicle_id VARCHAR(32) DEFAULT NULL,
   date DATE NOT NULL,
   time VARCHAR(8) NOT NULL,
   service VARCHAR(120) NOT NULL,
@@ -370,6 +374,79 @@ async function applySchema(pool) {
   }
 }
 
+async function migrate(pool) {
+  const alters = [
+    'ALTER TABLE users ADD COLUMN email_verified TINYINT NOT NULL DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN verify_hash VARCHAR(120) DEFAULT NULL',
+    'ALTER TABLE users ADD COLUMN verify_expires DATETIME DEFAULT NULL',
+    'ALTER TABLE users ADD COLUMN verify_tries INT DEFAULT 0',
+    'ALTER TABLE users MODIFY phone VARCHAR(48) DEFAULT ""',
+    'ALTER TABLE appointments MODIFY vehicle_id VARCHAR(32) NULL',
+    'ALTER TABLE work_orders MODIFY vehicle_id VARCHAR(32) NULL',
+  ]
+  for (const sql of alters) {
+    try {
+      await pool.query(sql)
+    } catch {
+      /* columna o tipo ya aplicado */
+    }
+  }
+}
+
+function validEmail(email) {
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)
+}
+
+function validPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '')
+  return digits.length >= 8 && digits.length <= 18
+}
+
+async function sendGarageEmail(to, subject, message) {
+  console.log(`Correo (${subject}) para ${to}: ${message}`)
+  const key = process.env.RESEND_API_KEY
+  if (key) {
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM || 'Garage 301 <onboarding@resend.dev>',
+          to,
+          subject,
+          text: message,
+        }),
+      })
+      return
+    } catch {
+      /* continúa con FormSubmit */
+    }
+  }
+  try {
+    await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ _subject: subject, message }),
+    })
+  } catch {
+    /* el código queda en los logs del servidor */
+  }
+}
+
+async function issueVerifyCode(pool, userId, email) {
+  const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+  const hash = await bcrypt.hash(code, 10)
+  await pool.query(
+    'UPDATE users SET verify_hash=?, verify_expires=DATE_ADD(NOW(), INTERVAL 15 MINUTE), verify_tries=0, email_verified=0 WHERE id=?',
+    [hash, userId],
+  )
+  await sendGarageEmail(
+    email,
+    'Verifica tu correo — Garage 301',
+    `Hola,\n\nTu código de verificación de Garage 301 es: ${code}\nVence en 15 minutos.\n\nSi no creaste esta cuenta, ignora este mensaje.`,
+  )
+}
+
 async function start() {
   const mysqlKeys = Object.keys(process.env)
     .filter((k) => /MYSQL|DATABASE_URL/i.test(k))
@@ -437,6 +514,7 @@ async function start() {
     process.exit(1)
   }
   await applySchema(pool)
+  await migrate(pool)
   if (ON_CLOUD) await wipeDemoSeed(pool)
   else await seedIfEmpty(pool)
 
@@ -492,6 +570,14 @@ async function start() {
             : 'Este acceso es exclusivo del personal de Garage 301.',
       })
     }
+    if (Number(found.email_verified) === 0) {
+      return res.json({
+        ok: false,
+        needsVerify: true,
+        email: found.email,
+        message: 'Verifica tu correo para entrar. Te enviamos un código de 6 dígitos.',
+      })
+    }
     locks.delete(key)
     const state = await getState(pool)
     res.json({ ok: true, token: tokenFor(found), user: publicUser(found), state })
@@ -507,7 +593,8 @@ async function start() {
     if (!name) return res.json({ error: 'El nombre es obligatorio.' })
     if (username.length < 3) return res.json({ error: 'El usuario debe tener al menos 3 caracteres.' })
     if (!/^[a-z0-9._-]+$/.test(username)) return res.json({ error: 'Usuario inválido.' })
-    if (!email.includes('@')) return res.json({ error: 'El correo no es válido.' })
+    if (!validEmail(email)) return res.json({ error: 'Escribe un correo válido, por ejemplo  nombre@gmail.com' })
+    if (!validPhone(phone)) return res.json({ error: 'El teléfono debe incluir lada de país y número local.' })
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
       return res.json({ error: 'La contraseña debe tener al menos 8 caracteres, con letras y números.' })
     }
@@ -516,7 +603,7 @@ async function start() {
     const id = uid('u')
     const hash = await bcrypt.hash(password, 10)
     await pool.query(
-      'INSERT INTO users (id,name,username,email,password,role,phone,address,avatar) VALUES (?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO users (id,name,username,email,password,role,phone,address,avatar,email_verified) VALUES (?,?,?,?,?,?,?,?,?,0)',
       [id, name, username, email, hash, role, phone, '', ''],
     )
     const vehicle = req.body.vehicle
@@ -541,10 +628,45 @@ async function start() {
         ],
       )
     }
-    const [users] = await pool.query('SELECT * FROM users WHERE id=?', [id])
-    const user = users[0]
+    await issueVerifyCode(pool, id, email)
+    res.json({ verifyEmail: email })
+  })
+
+  app.post('/api/auth/verify', async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase()
+    const code = String(req.body.code || '').trim()
+    const [users] = await pool.query('SELECT * FROM users WHERE email=? LIMIT 1', [email])
+    const found = users[0]
+    if (!found) return res.json({ error: 'No encontramos ese correo.' })
+    if (Number(found.email_verified) === 1) {
+      const state = await getState(pool)
+      return res.json({ token: tokenFor(found), user: publicUser(found), state })
+    }
+    if (!found.verify_hash) return res.json({ error: 'Pide un código nuevo.' })
+    if (found.verify_expires && new Date(found.verify_expires) < new Date()) {
+      return res.json({ error: 'El código ya venció. Reenvíalo.' })
+    }
+    if (found.verify_tries >= 5) return res.json({ error: 'Demasiados intentos. Reenvía un código nuevo.' })
+    const ok = await bcrypt.compare(code, found.verify_hash)
+    if (!ok) {
+      await pool.query('UPDATE users SET verify_tries=verify_tries+1 WHERE id=?', [found.id])
+      return res.json({ error: 'El código no es correcto.' })
+    }
+    await pool.query(
+      'UPDATE users SET email_verified=1, verify_hash=NULL, verify_expires=NULL, verify_tries=0 WHERE id=?',
+      [found.id],
+    )
     const state = await getState(pool)
-    res.json({ token: tokenFor(user), user: publicUser(user), state })
+    res.json({ token: tokenFor(found), user: publicUser(found), state })
+  })
+
+  app.post('/api/auth/verify/resend', async (req, res) => {
+    const email = String(req.body.email || '').trim().toLowerCase()
+    if (!validEmail(email)) return res.json({ error: 'Correo no válido.' })
+    const [users] = await pool.query('SELECT * FROM users WHERE email=? LIMIT 1', [email])
+    const found = users[0]
+    if (found && Number(found.email_verified) === 0) await issueVerifyCode(pool, found.id, found.email)
+    res.json({ ok: true })
   })
 
   app.post('/api/auth/recovery', async (req, res) => {
@@ -560,18 +682,11 @@ async function start() {
         [hash, found.id],
       )
       console.log(`Código de recuperación para ${found.email}: ${code}`)
-      try {
-        await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(found.email)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            _subject: 'Código de recuperación Garage 301',
-            message: `Tu código de Garage 301 es: ${code}`,
-          }),
-        })
-      } catch {
-        /* ignore */
-      }
+      await sendGarageEmail(
+        found.email,
+        'Código de recuperación Garage 301',
+        `Tu código de Garage 301 es: ${code}\nVence en 10 minutos.`,
+      )
     }
     res.json({ ok: true })
   })
@@ -681,13 +796,14 @@ async function start() {
     if (busy[0].n >= SLOT_CAPACITY) {
       return res.json({ error: 'Ese horario ya no tiene espacio. Elige otro en verde o amarillo.' })
     }
+    const vehicleId = String(req.body.vehicleId || '').trim() || null
     const id = uid('a')
     await pool.query(
       'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,?,?,?,?,?,?)',
       [
         id,
         req.user.role === 'cliente' ? req.user.id : req.body.clientId,
-        req.body.vehicleId,
+        vehicleId,
         date,
         time,
         req.body.service,
@@ -725,10 +841,12 @@ async function start() {
     const desc = cita.notes ? `${cita.service}. ${cita.notes}` : cita.service
     await pool.query(
       'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor) VALUES (?,?,?,?,?,?,?,NOW(),?)',
-      [orderId, folio, cita.vehicle_id, cita.client_id, me[0]?.name || 'Taller', desc, 'en_proceso', 600],
+      [orderId, folio, cita.vehicle_id || null, cita.client_id, me[0]?.name || 'Taller', desc, 'en_proceso', 600],
     )
     await pool.query('UPDATE appointments SET status=?, order_id=? WHERE id=?', ['confirmada', orderId, cita.id])
-    await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['en_taller', cita.vehicle_id])
+    if (cita.vehicle_id) {
+      await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['en_taller', cita.vehicle_id])
+    }
     res.json({ state: await getState(pool) })
   })
 

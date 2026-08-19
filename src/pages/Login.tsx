@@ -20,6 +20,10 @@ export function Login() {
     setBusy(false)
     if (result.ok) return
     setPassword('')
+    if (result.needsVerify) {
+      navigate(`/verificar?email=${encodeURIComponent(result.email || identifier)}`)
+      return
+    }
     if (result.recover) {
       const email = result.email || identifier
       navigate(`/recuperacion?email=${encodeURIComponent(email)}&auto=1`)

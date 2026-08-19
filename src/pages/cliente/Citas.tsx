@@ -64,9 +64,9 @@ function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
                   {formatDay(a.date)} {a.time}
                 </td>
                 <td>
-                  {v?.plate}
+                  {v?.plate ?? 'Sin vehículo'}
                   <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-                    {v?.brand} {v?.model}
+                    {v ? `${v.brand} ${v.model}` : 'Se indicará en el taller'}
                   </div>
                 </td>
                 <td>{a.service}</td>

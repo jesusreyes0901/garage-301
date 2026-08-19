@@ -361,6 +361,17 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
 .password-toggle:hover { color: var(--text); }
 .form textarea { min-height: 90px; resize: vertical; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.phone-field {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 8px;
+}
+.phone-field select, .phone-field input {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
 
 .search {
   display: flex;

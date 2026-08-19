@@ -18,6 +18,7 @@ import { ClienteCitas } from './pages/cliente/Citas'
 import { Perfil } from './pages/Perfil'
 import { Registro } from './pages/Registro'
 import { Recuperacion } from './pages/Recuperacion'
+import { Verificar } from './pages/Verificar'
 import { AccesoTaller } from './pages/AccesoTaller'
 import { RegistroTaller } from './pages/RegistroTaller'
 import type { Role } from './types'
@@ -36,6 +37,7 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Login />} />
       <Route path="/registro" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Registro />} />
       <Route path="/recuperacion" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Recuperacion />} />
+      <Route path="/verificar" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Verificar />} />
       <Route
         path="/acceso-taller"
         element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <AccesoTaller />}

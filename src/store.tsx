@@ -86,6 +86,8 @@ interface StoreValue {
   user: User | null
   login: (identifier: string, password: string, expectedRole: Role) => Promise<LoginResult>
   register: (input: RegisterInput) => Promise<string | null>
+  confirmEmail: (email: string, code: string) => Promise<string | null>
+  resendVerification: (email: string) => Promise<string | null>
   requestRecovery: (identifier: string) => Promise<string | null>
   confirmRecovery: (email: string, code: string, newPassword: string) => Promise<string | null>
   logout: () => void
@@ -149,6 +151,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ok: false,
             message: data.message,
             recover: data.recover,
+            needsVerify: data.needsVerify,
             email: data.email,
           }
         }
@@ -169,6 +172,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(input) })
         if (data.error) return data.error as string
+        if (data.verifyEmail) return `VERIFY:${data.verifyEmail}`
         apply(data)
         return null
       } catch (err) {
@@ -177,6 +181,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [apply],
   )
+
+  const confirmEmail = useCallback(
+    async (email: string, code: string) => {
+      try {
+        const data = await api('/api/auth/verify', {
+          method: 'POST',
+          body: JSON.stringify({ email, code }),
+        })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo verificar el correo.'
+      }
+    },
+    [apply],
+  )
+
+  const resendVerification = useCallback(async (email: string) => {
+    try {
+      const data = await api('/api/auth/verify/resend', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+      return data.error || null
+    } catch (err) {
+      return err instanceof Error ? err.message : 'No se pudo reenviar el código.'
+    }
+  }, [])
 
   const requestRecovery = useCallback(async (identifier: string) => {
     try {
@@ -312,6 +345,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       user,
       login,
       register,
+      confirmEmail,
+      resendVerification,
       requestRecovery,
       confirmRecovery,
       logout,
@@ -336,6 +371,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       user,
       login,
       register,
+      confirmEmail,
+      resendVerification,
       requestRecovery,
       confirmRecovery,
       logout,
@@ -371,6 +408,7 @@ export function userById(users: User[], id: string) {
 }
 
 export function vehicleById(vehicles: Vehicle[], id: string) {
+  if (!id) return undefined
   return vehicles.find((v) => v.id === id)
 }
 

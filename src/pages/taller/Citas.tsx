@@ -47,9 +47,9 @@ export function TallerCitas() {
                     </td>
                     <td>{c?.name}</td>
                     <td>
-                      {v?.plate}
+                      {v?.plate ?? 'Sin vehículo'}
                       <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-                        {v?.brand} {v?.model}
+                        {v ? `${v.brand} ${v.model}` : a.notes || 'Pendiente de unidad'}
                       </div>
                     </td>
                     <td>{a.service}</td>

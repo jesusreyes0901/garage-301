@@ -11,7 +11,7 @@ export interface Session {
 
 export type LoginResult =
   | { ok: true }
-  | { ok: false; message: string; recover?: boolean; email?: string }
+  | { ok: false; message: string; recover?: boolean; needsVerify?: boolean; email?: string }
 
 interface LockState {
   [key: string]: { attempts: number }

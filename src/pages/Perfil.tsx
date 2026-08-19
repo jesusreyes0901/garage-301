@@ -1,6 +1,8 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { BrandLogo } from '../components/BrandLogo'
 import { PasswordField } from '../components/PasswordField'
+import { PhoneField } from '../components/PhoneField'
+import { validEmail, validPhone } from '../countries'
 import { useStore } from '../store'
 
 function fileToAvatar(file: File): Promise<string> {
@@ -81,6 +83,15 @@ export function Perfil() {
     e.preventDefault()
     setError(null)
     setMessage(null)
+    if (!validEmail(email)) {
+      setError('Escribe un correo válido, por ejemplo  nombre@gmail.com')
+      return
+    }
+    const phoneError = validPhone(phone)
+    if (phoneError) {
+      setError(phoneError)
+      return
+    }
     if (newPassword && newPassword !== confirmPassword) {
       setError('La nueva contraseña y su confirmación no coinciden.')
       return
@@ -160,12 +171,12 @@ export function Perfil() {
           </div>
           <div className="form-row">
             <label>
-              Correo
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              Correo electrónico
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@gmail.com" required />
             </label>
             <label>
-              Teléfono
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              Teléfono con lada
+              <PhoneField value={phone} onChange={setPhone} required />
             </label>
           </div>
           <label>

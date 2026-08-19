@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Wrench } from 'lucide-react'
 import { PasswordField } from '../components/PasswordField'
+import { PhoneField } from '../components/PhoneField'
+import { validEmail, validPhone } from '../countries'
 import { useStore } from '../store'
 
 export function RegistroTaller() {
   const { register } = useStore()
+  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -21,6 +24,15 @@ export function RegistroTaller() {
       setError('Las contraseñas no coinciden.')
       return
     }
+    if (!validEmail(email)) {
+      setError('Escribe un correo válido, por ejemplo  taller@garage301.com')
+      return
+    }
+    const phoneError = validPhone(phone)
+    if (phoneError) {
+      setError(phoneError)
+      return
+    }
     setBusy(true)
     setError(null)
     const result = await register({
@@ -32,6 +44,10 @@ export function RegistroTaller() {
       role: 'taller',
     })
     setBusy(false)
+    if (result?.startsWith('VERIFY:')) {
+      navigate(`/verificar?email=${encodeURIComponent(result.slice(7))}`)
+      return
+    }
     if (result) setError(result)
   }
 
@@ -78,19 +94,20 @@ export function RegistroTaller() {
               </label>
             </div>
             <label>
-              Correo
+              Correo electrónico
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="off"
                 name="taller-new-email"
+                placeholder="taller@garage301.com"
                 required
               />
             </label>
             <label>
-              Teléfono
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" />
+              Teléfono con lada
+              <PhoneField value={phone} onChange={setPhone} required />
             </label>
             <div className="form-row">
               <label>
