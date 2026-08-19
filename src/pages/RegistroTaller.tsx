@@ -55,33 +55,61 @@ export function RegistroTaller() {
       <section className="login-panel">
         <div className="card login-card">
           <h2>Registro del taller</h2>
-          <form className="form" onSubmit={onSubmit}>
+          <form className="form" onSubmit={onSubmit} autoComplete="off">
             <div className="form-row">
               <label>
                 Nombre
-                <input value={name} onChange={(e) => setName(e.target.value)} required />
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="off"
+                  required
+                />
               </label>
               <label>
                 Usuario
-                <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="off"
+                  name="taller-new-username"
+                  required
+                />
               </label>
             </div>
             <label>
               Correo
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="off"
+                name="taller-new-email"
+                required
+              />
             </label>
             <label>
               Teléfono
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" />
             </label>
             <div className="form-row">
               <label>
                 Contraseña
-                <PasswordField value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <PasswordField
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
               </label>
               <label>
                 Confirmar
-                <PasswordField value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+                <PasswordField
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
               </label>
             </div>
             {error && <div className="error">{error}</div>}
