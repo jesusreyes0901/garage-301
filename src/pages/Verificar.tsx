@@ -9,11 +9,15 @@ export function Verificar() {
   const [email, setEmail] = useState(params.get('email') ?? '')
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [info, setInfo] = useState(
-    params.get('email')
-      ? 'Revisa tu bandeja de entrada (y spam). El código vence en 15 minutos.'
-      : null,
-  )
+  const [info, setInfo] = useState(() => {
+    if (params.get('envio') === '0') {
+      return 'El código se generó, pero Render aún no tiene un correo de envío. Configura Gmail (SMTP) o Brevo en Environment. Mientras, el código aparece en Logs del servidor.'
+    }
+    if (params.get('email')) {
+      return 'Revisa bandeja de entrada, spam y promociones. El código vence en 15 minutos.'
+    }
+    return null
+  })
   const [busy, setBusy] = useState(false)
 
   const onSubmit = async (e: FormEvent) => {
@@ -31,7 +35,7 @@ export function Verificar() {
     const result = await resendVerification(email)
     setBusy(false)
     if (result) setError(result)
-    else setInfo('Enviamos un código nuevo a tu correo.')
+    else setInfo('Si el correo está bien configurado, el código nuevo ya salió. Revisa spam.')
   }
 
   return (

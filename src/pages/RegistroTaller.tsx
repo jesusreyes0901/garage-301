@@ -44,8 +44,9 @@ export function RegistroTaller() {
       role: 'taller',
     })
     setBusy(false)
-    if (result?.startsWith('VERIFY:')) {
-      navigate(`/verificar?email=${encodeURIComponent(result.slice(7))}`)
+    if (result?.startsWith('VERIFY|')) {
+      const [, mail, mailed] = result.split('|')
+      navigate(`/verificar?email=${encodeURIComponent(mail)}&envio=${mailed}`)
       return
     }
     if (result) setError(result)

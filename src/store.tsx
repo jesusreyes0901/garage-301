@@ -172,7 +172,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(input) })
         if (data.error) return data.error as string
-        if (data.verifyEmail) return `VERIFY:${data.verifyEmail}`
+        if (data.verifyEmail) return `VERIFY|${data.verifyEmail}|${data.mailed ? '1' : '0'}`
         apply(data)
         return null
       } catch (err) {

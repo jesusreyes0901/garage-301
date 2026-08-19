@@ -7,6 +7,7 @@ import express from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import mysql from 'mysql2/promise'
+import nodemailer from 'nodemailer'
 
 const ON_CLOUD = Boolean(
   process.env.RAILWAY_ENVIRONMENT ||
@@ -403,34 +404,86 @@ function validPhone(phone) {
 }
 
 async function sendGarageEmail(to, subject, message) {
-  console.log(`Correo (${subject}) para ${to}: ${message}`)
-  const key = process.env.RESEND_API_KEY
-  if (key) {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#111;color:#f3f3f3;border-radius:16px">
+      <h1 style="color:#e10600;font-size:22px;margin:0 0 12px">Garage 301</h1>
+      <p style="white-space:pre-wrap;line-height:1.5">${message.replace(/</g, '')}</p>
+    </div>`
+  const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || ''
+
+  if (process.env.BREVO_API_KEY && fromEmail) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'Garage 301', email: fromEmail.includes('<') ? fromEmail.replace(/^.*<|>$/g, '') : fromEmail },
+          to: [{ email: to }],
+          subject,
+          textContent: message,
+          htmlContent: html,
+        }),
+      })
+      if (res.ok) {
+        console.log(`Correo enviado con Brevo a ${to}`)
+        return true
+      }
+      console.error('Brevo:', await res.text())
+    } catch (err) {
+      console.error('Brevo falló:', err.message)
+    }
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: process.env.EMAIL_FROM || 'Garage 301 <onboarding@resend.dev>',
           to,
           subject,
           text: message,
+          html,
         }),
       })
-      return
-    } catch {
-      /* continúa con FormSubmit */
+      if (res.ok) {
+        console.log(`Correo enviado con Resend a ${to}`)
+        return true
+      }
+      console.error('Resend:', await res.text())
+    } catch (err) {
+      console.error('Resend falló:', err.message)
     }
   }
-  try {
-    await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ _subject: subject, message }),
-    })
-  } catch {
-    /* el código queda en los logs del servidor */
+
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const user = process.env.SMTP_USER
+      const host = process.env.SMTP_HOST || 'smtp.gmail.com'
+      const port = Number(process.env.SMTP_PORT || 465)
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass: process.env.SMTP_PASS },
+      })
+      await transporter.sendMail({
+        from: process.env.EMAIL_FROM || `"Garage 301" <${user}>`,
+        to,
+        subject,
+        text: message,
+        html,
+      })
+      console.log(`Correo enviado por SMTP a ${to}`)
+      return true
+    } catch (err) {
+      console.error('SMTP falló:', err.message)
+    }
   }
+
+  console.error(`No hay servicio de correo configurado. El código para ${to} está arriba en los logs.`)
+  return false
 }
 
 async function issueVerifyCode(pool, userId, email) {
@@ -440,11 +493,13 @@ async function issueVerifyCode(pool, userId, email) {
     'UPDATE users SET verify_hash=?, verify_expires=DATE_ADD(NOW(), INTERVAL 15 MINUTE), verify_tries=0, email_verified=0 WHERE id=?',
     [hash, userId],
   )
-  await sendGarageEmail(
+  console.log(`Código de verificación para ${email}: ${code}`)
+  const mailed = await sendGarageEmail(
     email,
     'Verifica tu correo — Garage 301',
     `Hola,\n\nTu código de verificación de Garage 301 es: ${code}\nVence en 15 minutos.\n\nSi no creaste esta cuenta, ignora este mensaje.`,
   )
+  return mailed
 }
 
 async function start() {
@@ -628,8 +683,8 @@ async function start() {
         ],
       )
     }
-    await issueVerifyCode(pool, id, email)
-    res.json({ verifyEmail: email })
+    const mailed = await issueVerifyCode(pool, id, email)
+    res.json({ verifyEmail: email, mailed })
   })
 
   app.post('/api/auth/verify', async (req, res) => {
