@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Wrench } from 'lucide-react'
 import { PasswordField } from '../components/PasswordField'
+import { TermsAcceptRow, TermsDialog } from '../components/TermsDialog'
 import { useStore } from '../store'
 
 export function AccesoTaller() {
@@ -9,11 +10,17 @@ export function AccesoTaller() {
   const navigate = useNavigate()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [termsOpen, setTermsOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!acceptedTerms) {
+      setError('Debes aceptar los términos y condiciones para continuar.')
+      return
+    }
     setBusy(true)
     setError(null)
     const result = await login(identifier, password, 'taller')
@@ -95,8 +102,13 @@ export function AccesoTaller() {
                 required
               />
             </label>
+            <TermsAcceptRow
+              checked={acceptedTerms}
+              onChange={setAcceptedTerms}
+              onOpen={() => setTermsOpen(true)}
+            />
             {error && <div className="error">{error}</div>}
-            <button className="btn" type="submit" disabled={busy}>
+            <button className="btn" type="submit" disabled={busy || !acceptedTerms}>
               {busy ? 'Verificando…' : 'Entrar al taller'}
             </button>
           </form>
@@ -108,6 +120,7 @@ export function AccesoTaller() {
           </p>
         </div>
       </section>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   )
 }

@@ -175,4 +175,5 @@ export const seedState = (): AppState => ({
       createdAt: new Date(Date.now() - 1800000).toISOString(),
     },
   ],
+  coupons: [],
 })

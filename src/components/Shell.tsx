@@ -7,6 +7,7 @@ import {
   Package,
   PlusCircle,
   Search,
+  TicketPercent,
   UserRound,
   Wrench,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ const tallerNav = [
   { to: '/taller/citas', label: 'Citas', icon: CalendarDays },
   { to: '/taller/ordenes', label: 'Órdenes', icon: ClipboardList },
   { to: '/taller/refacciones', label: 'Refacciones', icon: Package },
+  { to: '/taller/cupones', label: 'Cupones', icon: TicketPercent },
   { to: '/taller/vehiculos', label: 'Vehículos', icon: Wrench },
   { to: '/taller/observaciones', label: 'Observaciones', icon: MessageSquare },
   { to: '/taller/perfil', label: 'Editar perfil', icon: UserRound },
@@ -28,6 +30,7 @@ const clienteNav = [
   { to: '/cliente', label: 'Mi panel', icon: LayoutDashboard, end: true },
   { to: '/cliente/agendar', label: 'Agendar cita', icon: PlusCircle },
   { to: '/cliente/citas', label: 'Mis citas', icon: CalendarDays },
+  { to: '/cliente/cupones', label: 'Cupones', icon: TicketPercent },
   { to: '/cliente/refacciones', label: 'Refacciones', icon: Package },
   { to: '/cliente/observaciones', label: 'Observaciones', icon: MessageSquare },
   { to: '/cliente/vehiculo', label: 'Buscar vehículo', icon: Search },

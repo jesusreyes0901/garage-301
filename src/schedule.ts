@@ -1,6 +1,11 @@
 import type { Appointment } from './types'
 
-export const WORK_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+/** Lunes a viernes: 9:00–17:00 */
+export const WEEKDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+/** Sábados: 9:00–14:00 */
+export const SATURDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00']
+/** @deprecated usa workSlotsForDate */
+export const WORK_SLOTS = WEEKDAY_SLOTS
 export const SLOT_CAPACITY = 2
 export const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -20,11 +25,21 @@ export function todayKey() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-export function slotOf(time: string) {
+export function dayOfWeek(date: string) {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(y, m - 1, d).getDay()
+}
+
+export function workSlotsForDate(date: string) {
+  return dayOfWeek(date) === 6 ? SATURDAY_SLOTS : WEEKDAY_SLOTS
+}
+
+export function slotOf(time: string, date?: string) {
   const hhmm = String(time || '').slice(0, 5)
-  if (WORK_SLOTS.includes(hhmm)) return hhmm
+  const slots = date ? workSlotsForDate(date) : WEEKDAY_SLOTS
+  if (slots.includes(hhmm)) return hhmm
   const hour = `${hhmm.slice(0, 2)}:00`
-  return WORK_SLOTS.includes(hour) ? hour : hhmm
+  return slots.includes(hour) ? hour : hhmm
 }
 
 function isActive(a: Appointment) {
@@ -32,7 +47,7 @@ function isActive(a: Appointment) {
 }
 
 export function slotTaken(appointments: Appointment[], date: string, time: string) {
-  return appointments.filter((a) => isActive(a) && toDayKey(a.date) === date && slotOf(a.time) === time).length
+  return appointments.filter((a) => isActive(a) && toDayKey(a.date) === date && slotOf(a.time, date) === time).length
 }
 
 export function slotTone(taken: number): SlotTone {
@@ -42,7 +57,7 @@ export function slotTone(taken: number): SlotTone {
 }
 
 export function remainingTimes(appointments: Appointment[], date: string) {
-  return WORK_SLOTS.filter((time) => slotTaken(appointments, date, time) < SLOT_CAPACITY)
+  return workSlotsForDate(date).filter((time) => slotTaken(appointments, date, time) < SLOT_CAPACITY)
 }
 
 export function dayTone(appointments: Appointment[], date: string): DayTone {
@@ -52,9 +67,10 @@ export function dayTone(appointments: Appointment[], date: string): DayTone {
   startToday.setHours(0, 0, 0, 0)
   if (day < startToday) return 'past'
   if (day.getDay() === 0) return 'closed'
+  const slots = workSlotsForDate(date)
   const left = remainingTimes(appointments, date)
   if (left.length === 0) return 'red'
-  if (left.length === WORK_SLOTS.length) return 'green'
+  if (left.length === slots.length) return 'green'
   return 'yellow'
 }
 

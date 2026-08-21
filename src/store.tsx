@@ -11,6 +11,7 @@ import type { LoginResult } from './auth'
 import type {
   Appointment,
   AppState,
+  Coupon,
   OrderStatus,
   PartRequest,
   Role,
@@ -28,6 +29,7 @@ const emptyState = (): AppState => ({
   parts: [],
   partRequests: [],
   observations: [],
+  coupons: [],
 })
 
 const API_ROOT = import.meta.env.DEV ? 'http://127.0.0.1:3001' : ''
@@ -108,6 +110,10 @@ interface StoreValue {
   adjustStock: (partId: string, delta: number) => string | null
   addPart: (p: { name: string; category?: string; price: number; cost: number; stock: number }) => void
   addVehicle: (v: Omit<Vehicle, 'id'>) => void
+  saveCoupon: (
+    input: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'> & { id?: string },
+  ) => Promise<string | null>
+  deleteCoupon: (id: string) => void
 }
 
 const StoreContext = createContext<StoreValue | null>(null)
@@ -117,7 +123,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
 
   const apply = useCallback((data: { state?: AppState; user?: User | null; token?: string }) => {
-    if (data.state) setState(data.state)
+    if (data.state) {
+      setState({
+        ...emptyState(),
+        ...data.state,
+        coupons: data.state.coupons ?? [],
+      })
+    }
     if (data.user) setUser(data.user)
     if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
   }, [])
@@ -339,6 +351,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     mutate('/api/vehicles', { method: 'POST', body: JSON.stringify(v) })
   }, [mutate])
 
+  const saveCoupon = useCallback(
+    async (input: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'> & { id?: string }) => {
+      try {
+        const path = input.id ? `/api/coupons/${input.id}` : '/api/coupons'
+        const method = input.id ? 'PATCH' : 'POST'
+        const data = await api(path, { method, body: JSON.stringify(input) })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo guardar el cupón.'
+      }
+    },
+    [apply],
+  )
+
+  const deleteCoupon = useCallback(
+    (id: string) => {
+      mutate(`/api/coupons/${id}`, { method: 'DELETE' })
+    },
+    [mutate],
+  )
+
   const value = useMemo(
     () => ({
       state,
@@ -365,6 +400,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adjustStock,
       addPart,
       addVehicle,
+      saveCoupon,
+      deleteCoupon,
     }),
     [
       state,
@@ -391,6 +428,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adjustStock,
       addPart,
       addVehicle,
+      saveCoupon,
+      deleteCoupon,
     ],
   )
 

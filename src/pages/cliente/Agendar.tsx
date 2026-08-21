@@ -1,8 +1,7 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
-  WORK_SLOTS,
   WEEKDAYS,
   SLOT_CAPACITY,
   dayTone,
@@ -12,6 +11,7 @@ import {
   slotTaken,
   slotTone,
   todayKey,
+  workSlotsForDate,
 } from '../../schedule'
 import { useStore } from '../../store'
 import { SERVICES } from '../../types'
@@ -22,6 +22,9 @@ export function ClienteAgendar() {
   const mine = state.vehicles.filter((v) => v.ownerId === user?.id)
   const now = new Date()
   const [vehicleId, setVehicleId] = useState(mine[0]?.id ?? '')
+  const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [year, setYear] = useState('')
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() })
   const [date, setDate] = useState(todayKey())
   const [time, setTime] = useState('')
@@ -30,9 +33,25 @@ export function ClienteAgendar() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const selectedVehicle = mine.find((v) => v.id === vehicleId)
+
+  useEffect(() => {
+    if (selectedVehicle) {
+      setBrand(selectedVehicle.brand)
+      setModel(selectedVehicle.model)
+      setYear(String(selectedVehicle.year))
+    } else {
+      setBrand('')
+      setModel('')
+      setYear('')
+    }
+  }, [selectedVehicle])
+
   const cells = useMemo(() => monthCells(cursor.year, cursor.month), [cursor])
   const tone = dayTone(state.appointments, date)
   const freeTimes = remainingTimes(state.appointments, date)
+  const daySlots = workSlotsForDate(date)
+  const isSaturday = new Date(`${date}T12:00:00`).getDay() === 6
 
   const shiftMonth = (delta: number) => {
     setCursor((c) => {
@@ -56,6 +75,15 @@ export function ClienteAgendar() {
       setError('Elige un horario disponible.')
       return
     }
+    if (!brand.trim() || !model.trim() || !year.trim()) {
+      setError('Indica marca, modelo y año del vehículo.')
+      return
+    }
+    const yearNum = Number(year)
+    if (!Number.isFinite(yearNum) || yearNum < 1950 || yearNum > now.getFullYear() + 1) {
+      setError('Escribe un año válido del vehículo.')
+      return
+    }
     setBusy(true)
     setError(null)
     const result = await addAppointment({
@@ -65,6 +93,9 @@ export function ClienteAgendar() {
       time,
       service,
       notes,
+      vehicleBrand: brand.trim(),
+      vehicleModel: model.trim(),
+      vehicleYear: yearNum,
     })
     setBusy(false)
     if (result) {
@@ -79,15 +110,15 @@ export function ClienteAgendar() {
       <div className="page-head">
         <div>
           <h2>Agendar cita</h2>
-          <p>Elige el día en el calendario y un horario con espacio.</p>
+          <p>Elige el día en el calendario y un horario con espacio. Sábados: 9:00–14:00.</p>
         </div>
       </div>
       <div className="card" style={{ maxWidth: 880 }}>
           <form className="form" onSubmit={onSubmit}>
             <label>
-              Vehículo (opcional)
+              Vehículo registrado (opcional)
               <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                <option value="">Sin vehículo registrado — lo indico en notas</option>
+                <option value="">Sin vehículo registrado — lo indico abajo</option>
                 {mine.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.plate} · {v.brand} {v.model}
@@ -95,11 +126,38 @@ export function ClienteAgendar() {
                 ))}
               </select>
             </label>
-            {mine.length === 0 && (
-              <p className="slot-note">
-                Puedes agendar ahora y anotar marca, modelo o placa en las observaciones. El auto se puede dar de alta después.
-              </p>
-            )}
+            <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 120px' }}>
+              <label>
+                Marca
+                <input
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                  placeholder="Nissan, Honda…"
+                  required
+                />
+              </label>
+              <label>
+                Modelo
+                <input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="Sentra, Civic…"
+                  required
+                />
+              </label>
+              <label>
+                Año
+                <input
+                  type="number"
+                  min={1950}
+                  max={now.getFullYear() + 1}
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  placeholder="2020"
+                  required
+                />
+              </label>
+            </div>
             <div className="schedule-layout">
               <div>
                 <div className="cal-head">
@@ -154,6 +212,9 @@ export function ClienteAgendar() {
                     month: 'long',
                   })}
                 </h3>
+                {isSaturday && (tone === 'green' || tone === 'yellow') && (
+                  <p className="slot-note">Sábado: horario de 9:00 a 14:00.</p>
+                )}
                 {tone === 'past' && <p className="empty">Esa fecha ya pasó.</p>}
                 {tone === 'closed' && <p className="empty">Domingo cerrado.</p>}
                 {tone === 'red' && <p className="empty">Este día ya no tiene horarios libres.</p>}
@@ -165,7 +226,7 @@ export function ClienteAgendar() {
                 {tone === 'green' && <p className="slot-note">Día disponible. Elige un horario.</p>}
                 {(tone === 'green' || tone === 'yellow') && (
                   <div className="slot-grid">
-                    {WORK_SLOTS.map((slot) => {
+                    {daySlots.map((slot) => {
                       const taken = slotTaken(state.appointments, date, slot)
                       const st = slotTone(taken)
                       const left = SLOT_CAPACITY - taken

@@ -92,8 +92,18 @@ function publicUser(row) {
   }
 }
 
-const WORK_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+const WEEKDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+const SATURDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00']
 const SLOT_CAPACITY = 2
+
+function workSlotsForDate(date) {
+  const day = new Date(`${date}T12:00:00`).getDay()
+  return day === 6 ? SATURDAY_SLOTS : WEEKDAY_SLOTS
+}
+
+function isAfinacionText(value) {
+  return /afinaci/i.test(String(value || ''))
+}
 
 function tokenFor(user) {
   return jwt.sign({ role: user.role }, JWT_SECRET, { expiresIn: '8h', subject: String(user.id) })
@@ -130,6 +140,7 @@ async function getState(pool) {
   const [parts] = await pool.query('SELECT * FROM parts')
   const [partRequests] = await pool.query('SELECT * FROM part_requests')
   const [observations] = await pool.query('SELECT * FROM observations')
+  const [coupons] = await pool.query('SELECT * FROM coupons ORDER BY created_at DESC')
 
   return {
     users: users.map(publicUser),
@@ -156,6 +167,9 @@ async function getState(pool) {
       status: a.status,
       notes: a.notes || '',
       orderId: a.order_id || undefined,
+      vehicleBrand: a.vehicle_brand || '',
+      vehicleModel: a.vehicle_model || '',
+      vehicleYear: a.vehicle_year != null ? Number(a.vehicle_year) : null,
     })),
     orders: orders.map((o) => ({
       id: o.id,
@@ -197,6 +211,25 @@ async function getState(pool) {
       text: o.text,
       photos: o.photos ? JSON.parse(o.photos) : [],
       createdAt: new Date(o.created_at).toISOString(),
+    })),
+    coupons: coupons.map((c) => ({
+      id: c.id,
+      code: c.code,
+      title: c.title,
+      description: c.description || '',
+      discountPercent: Number(c.discount_percent || 0),
+      discountAmount: Number(c.discount_amount || 0),
+      serviceType: c.service_type || 'Afinación mayor',
+      minAfinaciones: Number(c.min_afinaciones || 0),
+      active: Boolean(c.active),
+      clientId: c.client_id || undefined,
+      createdBy: c.created_by || '',
+      createdAt: new Date(c.created_at).toISOString(),
+      expiresAt: c.expires_at
+        ? typeof c.expires_at === 'string'
+          ? c.expires_at.slice(0, 10)
+          : c.expires_at.toISOString().slice(0, 10)
+        : null,
     })),
   }
 }
@@ -275,6 +308,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   status VARCHAR(30) NOT NULL,
   notes TEXT,
   order_id VARCHAR(32) DEFAULT NULL,
+  vehicle_brand VARCHAR(80) DEFAULT '',
+  vehicle_model VARCHAR(80) DEFAULT '',
+  vehicle_year INT DEFAULT NULL,
   FOREIGN KEY (client_id) REFERENCES users(id),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
 );
@@ -299,6 +335,23 @@ CREATE TABLE IF NOT EXISTS observations (
   created_at DATETIME NOT NULL,
   FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
   FOREIGN KEY (author_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS coupons (
+  id VARCHAR(32) PRIMARY KEY,
+  code VARCHAR(40) NOT NULL UNIQUE,
+  title VARCHAR(160) NOT NULL,
+  description TEXT,
+  discount_percent INT DEFAULT 0,
+  discount_amount DECIMAL(10,2) DEFAULT 0,
+  service_type VARCHAR(120) DEFAULT 'Afinación mayor',
+  min_afinaciones INT DEFAULT 0,
+  active TINYINT NOT NULL DEFAULT 1,
+  client_id VARCHAR(32) DEFAULT NULL,
+  created_by VARCHAR(32) DEFAULT NULL,
+  created_at DATETIME NOT NULL,
+  expires_at DATE DEFAULT NULL,
+  FOREIGN KEY (client_id) REFERENCES users(id),
+  FOREIGN KEY (created_by) REFERENCES users(id)
 );
 `
 
@@ -383,6 +436,9 @@ async function migrate(pool) {
     'ALTER TABLE users ADD COLUMN verify_tries INT DEFAULT 0',
     'ALTER TABLE users MODIFY phone VARCHAR(48) DEFAULT ""',
     'ALTER TABLE appointments MODIFY vehicle_id VARCHAR(32) NULL',
+    'ALTER TABLE appointments ADD COLUMN vehicle_brand VARCHAR(80) DEFAULT ""',
+    'ALTER TABLE appointments ADD COLUMN vehicle_model VARCHAR(80) DEFAULT ""',
+    'ALTER TABLE appointments ADD COLUMN vehicle_year INT DEFAULT NULL',
     'ALTER TABLE work_orders MODIFY vehicle_id VARCHAR(32) NULL',
   ]
   for (const sql of alters) {
@@ -392,6 +448,75 @@ async function migrate(pool) {
       /* columna o tipo ya aplicado */
     }
   }
+
+  const [couponCount] = await pool.query('SELECT COUNT(*) AS n FROM coupons')
+  if (couponCount[0].n === 0) {
+    await pool.query(
+      `INSERT INTO coupons (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
+       VALUES (?,?,?,?,?,?,?,?,1,NULL,NULL,NOW(),NULL)`,
+      [
+        uid('cp'),
+        'AFINACION5',
+        'Descuento por fidelidad en afinación',
+        'Con 5 o más afinaciones en Garage 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
+        15,
+        0,
+        'Afinación mayor',
+        5,
+      ],
+    )
+  }
+}
+
+async function countClientAfinaciones(pool, clientId) {
+  const [fromAppts] = await pool.query(
+    `SELECT COUNT(*) AS n FROM appointments
+     WHERE client_id=? AND status IN ('confirmada','en_proceso','completada') AND service LIKE '%Afinaci%'`,
+    [clientId],
+  )
+  const [fromOrders] = await pool.query(
+    `SELECT COUNT(*) AS n FROM work_orders
+     WHERE client_id=? AND status IN ('lista','entregada','en_proceso') AND description LIKE '%Afinaci%'`,
+    [clientId],
+  )
+  // Evita doble conteo cuando la cita ya generó orden: usa el máximo como aproximación conservadora
+  // Preferimos contar citas + órdenes sin cita vinculada
+  const [linked] = await pool.query(
+    `SELECT COUNT(*) AS n FROM appointments
+     WHERE client_id=? AND order_id IS NOT NULL AND status IN ('confirmada','en_proceso','completada')
+       AND service LIKE '%Afinaci%'`,
+    [clientId],
+  )
+  const apptOnly = Number(fromAppts[0].n) - Number(linked[0].n)
+  return Math.max(0, apptOnly) + Number(fromOrders[0].n)
+}
+
+async function ensureLoyaltyCoupon(pool, clientId) {
+  const count = await countClientAfinaciones(pool, clientId)
+  if (count < 5) return count
+  const [existing] = await pool.query(
+    `SELECT id FROM coupons WHERE client_id=? AND code LIKE 'LOYAL-%' AND active=1 LIMIT 1`,
+    [clientId],
+  )
+  if (existing.length) return count
+  const code = `LOYAL-${String(clientId).slice(-6).toUpperCase()}-${count}`
+  await pool.query(
+    `INSERT INTO coupons (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
+     VALUES (?,?,?,?,?,?,?,?,1,?,?,NOW(),NULL)`,
+    [
+      uid('cp'),
+      code,
+      'Cupón por 5+ afinaciones',
+      `Has acumulado ${count} afinaciones. Este cupón te da descuento en tu próxima afinación en Garage 301.`,
+      15,
+      0,
+      'Afinación mayor',
+      5,
+      clientId,
+      clientId,
+    ],
+  )
+  return count
 }
 
 function validEmail(email) {
@@ -778,6 +903,9 @@ async function start() {
 
   app.get('/api/state', auth, async (req, res) => {
     const [users] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [req.user.id])
+    if (req.user.role === 'cliente') {
+      await ensureLoyaltyCoupon(pool, req.user.id)
+    }
     res.json({
       state: await getState(pool),
       user: users[0] ? publicUser(users[0]) : null,
@@ -832,7 +960,8 @@ async function start() {
   app.post('/api/appointments', auth, async (req, res) => {
     const date = String(req.body.date || '').slice(0, 10)
     const time = normalizeTime(req.body.time)
-    if (!date || !WORK_SLOTS.includes(time)) {
+    const slots = workSlotsForDate(date)
+    if (!date || !slots.includes(time)) {
       return res.json({ error: 'Elige un día y un horario del calendario.' })
     }
     const day = new Date(`${date}T12:00:00`)
@@ -842,6 +971,9 @@ async function start() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     if (day < today) return res.json({ error: 'No se puede agendar en una fecha pasada.' })
+    if (day.getDay() === 6 && time > '14:00') {
+      return res.json({ error: 'Los sábados solo se agenda de 9:00 a 14:00.' })
+    }
     const hour = time.slice(0, 2)
     const [busy] = await pool.query(
       `SELECT COUNT(*) AS n FROM appointments
@@ -852,9 +984,19 @@ async function start() {
       return res.json({ error: 'Ese horario ya no tiene espacio. Elige otro en verde o amarillo.' })
     }
     const vehicleId = String(req.body.vehicleId || '').trim() || null
+    const vehicleBrand = String(req.body.vehicleBrand || '').trim()
+    const vehicleModel = String(req.body.vehicleModel || '').trim()
+    const vehicleYearRaw = req.body.vehicleYear
+    const vehicleYear =
+      vehicleYearRaw === '' || vehicleYearRaw == null ? null : Number(vehicleYearRaw)
+    if (!vehicleBrand || !vehicleModel || !vehicleYear) {
+      return res.json({ error: 'Indica marca, modelo y año del vehículo.' })
+    }
     const id = uid('a')
     await pool.query(
-      'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,?,?,?,?,?,?)',
+      `INSERT INTO appointments
+       (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         req.user.role === 'cliente' ? req.user.id : req.body.clientId,
@@ -864,8 +1006,14 @@ async function start() {
         req.body.service,
         req.body.status || 'pendiente',
         req.body.notes || '',
+        vehicleBrand,
+        vehicleModel,
+        vehicleYear,
       ],
     )
+    if (req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
+      await ensureLoyaltyCoupon(pool, req.user.id)
+    }
     res.json({ state: await getState(pool) })
   })
 
@@ -901,6 +1049,9 @@ async function start() {
     await pool.query('UPDATE appointments SET status=?, order_id=? WHERE id=?', ['confirmada', orderId, cita.id])
     if (cita.vehicle_id) {
       await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['en_taller', cita.vehicle_id])
+    }
+    if (isAfinacionText(cita.service)) {
+      await ensureLoyaltyCoupon(pool, cita.client_id)
     }
     res.json({ state: await getState(pool) })
   })
@@ -996,6 +1147,95 @@ async function start() {
     const notice =
       nextStock === 0 && Number(req.body.delta) < 0 ? `Se terminó la refacción: ${current.name}` : null
     res.json({ notice, state: await getState(pool) })
+  })
+
+  app.get('/api/loyalty/:clientId?', auth, async (req, res) => {
+    const clientId = req.params.clientId || req.user.id
+    if (req.user.role === 'cliente' && clientId !== req.user.id) {
+      return res.status(403).json({ error: 'No autorizado.' })
+    }
+    const count = await ensureLoyaltyCoupon(pool, clientId)
+    res.json({ afinaciones: count, state: await getState(pool) })
+  })
+
+  app.post('/api/coupons', auth, async (req, res) => {
+    if (req.user.role !== 'taller') return res.status(403).json({ error: 'Solo el taller puede crear cupones.' })
+    const code = String(req.body.code || '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '')
+    const title = String(req.body.title || '').trim()
+    if (!code || !title) return res.json({ error: 'Código y título son obligatorios.' })
+    const id = uid('cp')
+    try {
+      await pool.query(
+        `INSERT INTO coupons
+         (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),?)`,
+        [
+          id,
+          code,
+          title,
+          req.body.description || '',
+          Number(req.body.discountPercent || 0),
+          Number(req.body.discountAmount || 0),
+          req.body.serviceType || 'Afinación mayor',
+          Number(req.body.minAfinaciones || 0),
+          req.body.active === false ? 0 : 1,
+          req.body.clientId || null,
+          req.user.id,
+          req.body.expiresAt || null,
+        ],
+      )
+    } catch (err) {
+      if (String(err.message || '').includes('Duplicate')) {
+        return res.json({ error: 'Ese código de cupón ya existe.' })
+      }
+      throw err
+    }
+    res.json({ state: await getState(pool) })
+  })
+
+  app.patch('/api/coupons/:id', auth, async (req, res) => {
+    if (req.user.role !== 'taller') return res.status(403).json({ error: 'Solo el taller puede editar cupones.' })
+    const [rows] = await pool.query('SELECT * FROM coupons WHERE id=?', [req.params.id])
+    if (!rows[0]) return res.status(404).json({ error: 'Cupón no encontrado' })
+    const c = rows[0]
+    const code = String(req.body.code ?? c.code)
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '')
+    try {
+      await pool.query(
+        `UPDATE coupons SET code=?, title=?, description=?, discount_percent=?, discount_amount=?,
+         service_type=?, min_afinaciones=?, active=?, client_id=?, expires_at=? WHERE id=?`,
+        [
+          code,
+          String(req.body.title ?? c.title).trim(),
+          req.body.description ?? c.description,
+          Number(req.body.discountPercent ?? c.discount_percent),
+          Number(req.body.discountAmount ?? c.discount_amount),
+          req.body.serviceType ?? c.service_type,
+          Number(req.body.minAfinaciones ?? c.min_afinaciones),
+          req.body.active === false || req.body.active === 0 ? 0 : 1,
+          req.body.clientId === '' ? null : req.body.clientId ?? c.client_id,
+          req.body.expiresAt === '' ? null : req.body.expiresAt ?? c.expires_at,
+          req.params.id,
+        ],
+      )
+    } catch (err) {
+      if (String(err.message || '').includes('Duplicate')) {
+        return res.json({ error: 'Ese código de cupón ya existe.' })
+      }
+      throw err
+    }
+    res.json({ state: await getState(pool) })
+  })
+
+  app.delete('/api/coupons/:id', auth, async (req, res) => {
+    if (req.user.role !== 'taller') return res.status(403).json({ error: 'Solo el taller puede eliminar cupones.' })
+    await pool.query('DELETE FROM coupons WHERE id=?', [req.params.id])
+    res.json({ state: await getState(pool) })
   })
 
   const dist = path.join(__dirname, '..', 'dist')

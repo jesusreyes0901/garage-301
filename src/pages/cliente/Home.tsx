@@ -1,7 +1,8 @@
-import { CalendarPlus, MessageSquare, Package, Search } from 'lucide-react'
+import { CalendarPlus, MessageSquare, Package, Search, TicketPercent } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
 import { formatDay, useStore, vehicleById } from '../../store'
+import { countAfinaciones } from './Cupones'
 
 export function ClienteHome() {
   const { state, user } = useStore()
@@ -9,6 +10,15 @@ export function ClienteHome() {
   const myAppointments = state.appointments.filter((a) => a.clientId === user?.id)
   const myObs = state.observations.filter((o) => myVehicles.some((v) => v.id === o.vehicleId))
   const myParts = state.partRequests.filter((r) => r.clientId === user?.id)
+  const afinaciones = user ? countAfinaciones(state.appointments, state.orders, user.id) : 0
+  const today = new Date().toISOString().slice(0, 10)
+  const myCoupons = state.coupons.filter((c) => {
+    if (!user || !c.active) return false
+    if (c.expiresAt && c.expiresAt < today) return false
+    if (c.clientId && c.clientId !== user.id) return false
+    if (c.minAfinaciones > afinaciones) return false
+    return true
+  })
 
   return (
     <>
@@ -39,6 +49,33 @@ export function ClienteHome() {
           <div className="value">{myObs.length}</div>
         </div>
       </div>
+      {myCoupons.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>
+            <TicketPercent size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+            Cupones disponibles
+          </h3>
+          <p style={{ color: 'var(--muted)', marginTop: 0 }}>
+            {afinaciones >= 5
+              ? `Llevas ${afinaciones} afinaciones: ya tienes descuento en afinación.`
+              : `Llevas ${afinaciones} afinaciones.`}
+          </p>
+          {myCoupons.slice(0, 3).map((c) => (
+            <div className="coupon-card" key={c.id}>
+              <div className="code">{c.code}</div>
+              <strong>{c.title}</strong>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                {c.discountPercent > 0 ? `${c.discountPercent}%` : ''}
+                {c.discountPercent > 0 && c.discountAmount > 0 ? ' · ' : ''}
+                {c.discountAmount > 0 ? `$${c.discountAmount}` : ''} en {c.serviceType}
+              </div>
+            </div>
+          ))}
+          <Link className="btn secondary" to="/cliente/cupones" style={{ marginTop: 8 }}>
+            Ver todos los cupones
+          </Link>
+        </div>
+      )}
       <div className="grid two" style={{ marginTop: 16 }}>
         <div className="card">
           <h3>Mis vehículos</h3>

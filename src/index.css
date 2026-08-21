@@ -574,6 +574,70 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
 }
 .result-btn:hover, .result-btn.active { border-color: var(--amber); }
 
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.checkbox-row input[type='checkbox'] {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--red, #e10600);
+  flex-shrink: 0;
+}
+.terms-accept .linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--amber);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: grid;
+  place-items: center;
+  z-index: 80;
+  padding: 20px;
+}
+.modal-dialog {
+  width: min(520px, 100%);
+  max-height: min(80vh, 640px);
+  display: grid;
+  gap: 14px;
+  overflow: hidden;
+}
+.terms-body {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  overflow: auto;
+  max-height: 48vh;
+  padding-right: 6px;
+}
+.coupon-card {
+  border: 1px dashed var(--amber);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+.coupon-card .code {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  font-weight: 700;
+}
+
 @media (max-width: 1100px) {
   .stats, .two, .three, .form-row { grid-template-columns: 1fr; }
   .app-shell { grid-template-columns: 1fr; }

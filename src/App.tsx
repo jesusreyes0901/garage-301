@@ -9,12 +9,14 @@ import { TallerOrdenes } from './pages/taller/Ordenes'
 import { TallerRefacciones } from './pages/taller/Refacciones'
 import { TallerVehiculos } from './pages/taller/Vehiculos'
 import { TallerObservaciones } from './pages/taller/Observaciones'
+import { TallerCupones } from './pages/taller/Cupones'
 import { ClienteHome } from './pages/cliente/Home'
 import { ClienteAgendar } from './pages/cliente/Agendar'
 import { ClienteRefacciones } from './pages/cliente/Refacciones'
 import { ClienteObservaciones } from './pages/cliente/Observaciones'
 import { ClienteBusqueda } from './pages/cliente/Busqueda'
 import { ClienteCitas } from './pages/cliente/Citas'
+import { ClienteCupones } from './pages/cliente/Cupones'
 import { Perfil } from './pages/Perfil'
 import { Registro } from './pages/Registro'
 import { Recuperacion } from './pages/Recuperacion'
@@ -58,6 +60,7 @@ export default function App() {
         <Route path="citas" element={<TallerCitas />} />
         <Route path="ordenes" element={<TallerOrdenes />} />
         <Route path="refacciones" element={<TallerRefacciones />} />
+        <Route path="cupones" element={<TallerCupones />} />
         <Route path="vehiculos" element={<TallerVehiculos />} />
         <Route path="observaciones" element={<TallerObservaciones />} />
         <Route path="perfil" element={<Perfil />} />
@@ -73,6 +76,7 @@ export default function App() {
         <Route index element={<ClienteHome />} />
         <Route path="agendar" element={<ClienteAgendar />} />
         <Route path="citas" element={<ClienteCitas />} />
+        <Route path="cupones" element={<ClienteCupones />} />
         <Route path="refacciones" element={<ClienteRefacciones />} />
         <Route path="observaciones" element={<ClienteObservaciones />} />
         <Route path="vehiculo" element={<ClienteBusqueda />} />

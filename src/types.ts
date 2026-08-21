@@ -57,6 +57,25 @@ export interface Appointment {
   status: AppointmentStatus
   notes: string
   orderId?: string
+  vehicleBrand?: string
+  vehicleModel?: string
+  vehicleYear?: number | null
+}
+
+export interface Coupon {
+  id: string
+  code: string
+  title: string
+  description: string
+  discountPercent: number
+  discountAmount: number
+  serviceType: string
+  minAfinaciones: number
+  active: boolean
+  clientId?: string
+  createdBy: string
+  createdAt: string
+  expiresAt?: string | null
 }
 
 export interface WorkOrder {
@@ -110,6 +129,7 @@ export interface AppState {
   parts: Part[]
   partRequests: PartRequest[]
   observations: Observation[]
+  coupons: Coupon[]
 }
 
 export const SERVICES = [
