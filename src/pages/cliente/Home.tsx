@@ -61,7 +61,7 @@ export function ClienteHome() {
               : `Llevas ${afinaciones} afinaciones.`}
           </p>
           {myCoupons.slice(0, 3).map((c) => (
-            <CouponView key={c.id} coupon={c} applied />
+            <CouponView key={c.id} coupon={c} applied showUse />
           ))}
           <Link className="btn secondary" to="/cliente/cupones" style={{ marginTop: 8 }}>
             Ver todos los cupones

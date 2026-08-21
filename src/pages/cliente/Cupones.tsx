@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { TicketPercent } from 'lucide-react'
 import { formatDay, formatMoney, useStore } from '../../store'
 import { couponDiscountBreakdown, type Coupon } from '../../types'
@@ -69,7 +70,7 @@ export function ClienteCupones() {
       <div className="page-head">
         <div>
           <h2>Mis cupones</h2>
-          <p>Al desbloquear un cupón, el descuento se calcula y muestra aquí mismo.</p>
+          <p>Usa un cupón para ir directo a agendar con el descuento aplicado.</p>
         </div>
       </div>
       <div className="grid stats" style={{ marginBottom: 16 }}>
@@ -91,14 +92,19 @@ export function ClienteCupones() {
           <p className="empty">Aún no tienes cupones activos. Sigue agendando afinaciones.</p>
         )}
         {visible.map((c) => (
-          <CouponView key={c.id} coupon={c} applied />
+          <CouponView key={c.id} coupon={c} applied showUse />
         ))}
       </div>
       {locked.length > 0 && (
         <div className="card">
           <h3>Por desbloquear</h3>
           {locked.map((c) => (
-            <CouponView key={c.id} coupon={c} applied={false} lockedHint={`Necesitas ${c.minAfinaciones} afinaciones (llevas ${afinaciones}).`} />
+            <CouponView
+              key={c.id}
+              coupon={c}
+              applied={false}
+              lockedHint={`Necesitas ${c.minAfinaciones} afinaciones (llevas ${afinaciones}).`}
+            />
           ))}
         </div>
       )}
@@ -110,10 +116,12 @@ export function CouponView({
   coupon: c,
   applied,
   lockedHint,
+  showUse = false,
 }: {
   coupon: Coupon
   applied: boolean
   lockedHint?: string
+  showUse?: boolean
 }) {
   const breakdown = couponDiscountBreakdown(c)
   return (
@@ -153,6 +161,15 @@ export function CouponView({
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
           Vigente hasta {formatDay(c.expiresAt)}
         </div>
+      )}
+      {showUse && applied && (
+        <Link
+          className="btn"
+          to={`/cliente/agendar?cupon=${encodeURIComponent(c.code)}`}
+          style={{ marginTop: 12, display: 'inline-flex' }}
+        >
+          Usar cupón
+        </Link>
       )}
     </div>
   )

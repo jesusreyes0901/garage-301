@@ -29,7 +29,7 @@ export function TallerHome() {
       <div className="page-head">
         <div>
           <h2>Panel del taller</h2>
-          <p>Operación del día: citas, órdenes, inventario y utilidad.</p>
+          <p>Operación del día: citas, órdenes, inventario y utilidad del taller.</p>
         </div>
         <Link className="btn" to="/taller/ordenes">
           Nueva orden
@@ -41,21 +41,21 @@ export function TallerHome() {
             <Wallet size={16} /> Ingresos
           </div>
           <div className="value">{formatMoney(ingresos)}</div>
-          <div className="hint">Mano de obra y refacciones</div>
+          <div className="hint">Mano de obra, refacciones y cobros de entrega</div>
         </div>
         <div className="card stat">
           <div className="label">
             <Package size={16} /> Gastos
           </div>
           <div className="value">{formatMoney(gastos)}</div>
-          <div className="hint">Refacciones y materiales de entrega</div>
+          <div className="hint">Costos capturados al entregar órdenes</div>
         </div>
         <div className="card stat">
           <div className="label">
             <TrendingUp size={16} /> Utilidad
           </div>
           <div className="value">{margen}%</div>
-          <div className="hint">{formatMoney(utilidad)} de ganancia</div>
+          <div className="hint">{formatMoney(utilidad)} · se actualiza al entregar</div>
         </div>
         <div className="card stat">
           <div className="label">

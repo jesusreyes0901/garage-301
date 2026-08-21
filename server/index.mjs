@@ -183,6 +183,8 @@ async function getState(pool) {
       vehicleBrand: a.vehicle_brand || '',
       vehicleModel: a.vehicle_model || '',
       vehicleYear: a.vehicle_year != null ? Number(a.vehicle_year) : null,
+      couponCode: a.coupon_code || undefined,
+      discount: Number(a.discount || 0),
     })),
     orders: orders.map((o) => ({
       id: o.id,
@@ -508,6 +510,8 @@ async function migrate(pool) {
   await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
   await ensureColumn(pool, 'appointments', 'vehicle_model', "VARCHAR(80) DEFAULT ''")
   await ensureColumn(pool, 'appointments', 'vehicle_year', 'INT DEFAULT NULL')
+  await ensureColumn(pool, 'appointments', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+  await ensureColumn(pool, 'appointments', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
 
@@ -1082,14 +1086,77 @@ async function start() {
       const id = uid('a')
       const notesBase = String(req.body.notes || '')
       const vehicleNote = `${vehicleBrand} ${vehicleModel} ${vehicleYear}`.trim()
+      const couponCode = String(req.body.couponCode || '').trim().toUpperCase() || null
+      let discount = Math.max(0, Number(req.body.discount) || 0)
+
+      if (couponCode) {
+        const [couponRows] = await pool.query(
+          'SELECT * FROM coupons WHERE UPPER(code)=? AND active=1 LIMIT 1',
+          [couponCode],
+        )
+        const coupon = couponRows[0]
+        if (!coupon) return res.json({ error: 'El cupón no es válido.' })
+        if (coupon.client_id && coupon.client_id !== clientId) {
+          return res.json({ error: 'Este cupón no está asignado a tu cuenta.' })
+        }
+        if (coupon.expires_at) {
+          const exp =
+            typeof coupon.expires_at === 'string'
+              ? coupon.expires_at.slice(0, 10)
+              : coupon.expires_at.toISOString().slice(0, 10)
+          if (exp < date.slice(0, 10) && exp < new Date().toISOString().slice(0, 10)) {
+            return res.json({ error: 'El cupón ya venció.' })
+          }
+        }
+        if (coupon.service_type && coupon.service_type !== req.body.service) {
+          return res.json({ error: `Este cupón solo aplica para ${coupon.service_type}.` })
+        }
+        const basePrices = {
+          'Afinación mayor': 1800,
+          'Cambio de aceite': 650,
+          Frenos: 2200,
+          Suspensión: 2800,
+          'Diagnóstico computarizado': 500,
+          'Sistema eléctrico': 900,
+          'Cambio de clutch': 4500,
+          Otro: 800,
+        }
+        const base = basePrices[coupon.service_type] || 1000
+        const fromPercent = Math.round((base * Number(coupon.discount_percent || 0)) / 100)
+        discount = Math.min(base, fromPercent + Number(coupon.discount_amount || 0))
+      }
 
       await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
       await ensureColumn(pool, 'appointments', 'vehicle_model', "VARCHAR(80) DEFAULT ''")
       await ensureColumn(pool, 'appointments', 'vehicle_year', 'INT DEFAULT NULL')
+      await ensureColumn(pool, 'appointments', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+      await ensureColumn(pool, 'appointments', 'discount', 'DECIMAL(10,2) DEFAULT 0')
 
       const hasBrand = await columnExists(pool, 'appointments', 'vehicle_brand')
+      const hasCoupon = await columnExists(pool, 'appointments', 'coupon_code')
       try {
-        if (hasBrand) {
+        if (hasBrand && hasCoupon) {
+          await pool.query(
+            `INSERT INTO appointments
+             (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year,coupon_code,discount)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              id,
+              clientId,
+              vehicleId,
+              date,
+              time,
+              req.body.service,
+              req.body.status || 'pendiente',
+              notesBase,
+              vehicleBrand,
+              vehicleModel,
+              vehicleYear,
+              couponCode,
+              discount,
+            ],
+          )
+        } else if (hasBrand) {
           await pool.query(
             `INSERT INTO appointments
              (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
@@ -1120,35 +1187,58 @@ async function start() {
       } catch (insertErr) {
         // Si falla por FK de vehículo inexistente, guarda sin vehicle_id
         if (vehicleId && /foreign key|Cannot add or update/i.test(insertErr.message || '')) {
-          await pool.query(
-            hasBrand
-              ? `INSERT INTO appointments
-                 (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
-                 VALUES (?,?,NULL,?,?,?,?,?,?,?,?)`
-              : 'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,NULL,?,?,?,?,?)',
-            hasBrand
-              ? [
-                  id,
-                  clientId,
-                  date,
-                  time,
-                  req.body.service,
-                  req.body.status || 'pendiente',
-                  notesBase,
-                  vehicleBrand,
-                  vehicleModel,
-                  vehicleYear,
-                ]
-              : [
-                  id,
-                  clientId,
-                  date,
-                  time,
-                  req.body.service,
-                  req.body.status || 'pendiente',
-                  notesBase ? `${notesBase}\nVehículo: ${vehicleNote}` : `Vehículo: ${vehicleNote}`,
-                ],
-          )
+          if (hasBrand && hasCoupon) {
+            await pool.query(
+              `INSERT INTO appointments
+               (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year,coupon_code,discount)
+               VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?)`,
+              [
+                id,
+                clientId,
+                date,
+                time,
+                req.body.service,
+                req.body.status || 'pendiente',
+                notesBase,
+                vehicleBrand,
+                vehicleModel,
+                vehicleYear,
+                couponCode,
+                discount,
+              ],
+            )
+          } else if (hasBrand) {
+            await pool.query(
+              `INSERT INTO appointments
+               (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
+               VALUES (?,?,NULL,?,?,?,?,?,?,?,?)`,
+              [
+                id,
+                clientId,
+                date,
+                time,
+                req.body.service,
+                req.body.status || 'pendiente',
+                notesBase,
+                vehicleBrand,
+                vehicleModel,
+                vehicleYear,
+              ],
+            )
+          } else {
+            await pool.query(
+              'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,NULL,?,?,?,?,?)',
+              [
+                id,
+                clientId,
+                date,
+                time,
+                req.body.service,
+                req.body.status || 'pendiente',
+                notesBase ? `${notesBase}\nVehículo: ${vehicleNote}` : `Vehículo: ${vehicleNote}`,
+              ],
+            )
+          }
         } else {
           throw insertErr
         }
@@ -1194,11 +1284,37 @@ async function start() {
     const orderId = uid('o')
     const folio = `OT-${1040 + count[0].n + 1}`
     const [me] = await pool.query('SELECT name FROM users WHERE id=?', [req.user.id])
-    const desc = cita.notes ? `${cita.service}. ${cita.notes}` : cita.service
-    await pool.query(
-      'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor) VALUES (?,?,?,?,?,?,?,NOW(),?)',
-      [orderId, folio, cita.vehicle_id || null, cita.client_id, me[0]?.name || 'Taller', desc, 'en_proceso', 600],
-    )
+    const couponNote = cita.coupon_code
+      ? ` Cupón ${cita.coupon_code} (−$${Number(cita.discount || 0).toFixed(0)}).`
+      : ''
+    const desc = `${cita.service}${cita.notes ? `. ${cita.notes}` : ''}${couponNote}`.trim()
+    const laborBase = 600
+    const discount = Math.max(0, Number(cita.discount || 0))
+    await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
+    await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+    const hasDiscount = await columnExists(pool, 'work_orders', 'discount')
+    if (hasDiscount) {
+      await pool.query(
+        'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor,discount,coupon_code) VALUES (?,?,?,?,?,?,?,NOW(),?,?,?)',
+        [
+          orderId,
+          folio,
+          cita.vehicle_id || null,
+          cita.client_id,
+          me[0]?.name || 'Taller',
+          desc,
+          'en_proceso',
+          laborBase,
+          discount,
+          cita.coupon_code || null,
+        ],
+      )
+    } else {
+      await pool.query(
+        'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor) VALUES (?,?,?,?,?,?,?,NOW(),?)',
+        [orderId, folio, cita.vehicle_id || null, cita.client_id, me[0]?.name || 'Taller', desc, 'en_proceso', laborBase],
+      )
+    }
     await pool.query('UPDATE appointments SET status=?, order_id=? WHERE id=?', ['confirmada', orderId, cita.id])
     if (cita.vehicle_id) {
       await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['en_taller', cita.vehicle_id])

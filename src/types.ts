@@ -60,6 +60,8 @@ export interface Appointment {
   vehicleBrand?: string
   vehicleModel?: string
   vehicleYear?: number | null
+  couponCode?: string
+  discount?: number
 }
 
 export interface Coupon {

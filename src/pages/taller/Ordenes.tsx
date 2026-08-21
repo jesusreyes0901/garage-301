@@ -203,6 +203,13 @@ export function TallerOrdenes() {
                 Ingreso: <strong>{formatMoney(ingreso)}</strong>
                 {' · '}
                 Gasto: <strong>{formatMoney(gasto)}</strong>
+                {o.discount > 0 && (
+                  <>
+                    {' · '}
+                    Cupón: <strong>−{formatMoney(o.discount)}</strong>
+                    {o.couponCode ? ` (${o.couponCode})` : ''}
+                  </>
+                )}
               </p>
               <div className="row-actions" style={{ marginTop: 12 }}>
                 {STATUSES.map((s) => (

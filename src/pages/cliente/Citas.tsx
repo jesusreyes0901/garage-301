@@ -74,7 +74,15 @@ function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
                   </div>
                 </td>
                 <td>{a.service}</td>
-                <td>{a.notes || '—'}</td>
+                <td>
+                  {a.notes || '—'}
+                  {a.couponCode ? (
+                    <div style={{ color: 'var(--amber)', fontSize: 12, marginTop: 4 }}>
+                      Cupón {a.couponCode}
+                      {a.discount ? ` (−$${Number(a.discount).toFixed(0)})` : ''}
+                    </div>
+                  ) : null}
+                </td>
                 <td>
                   <StatusBadge value={a.status} />
                 </td>
