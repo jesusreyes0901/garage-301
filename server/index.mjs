@@ -1149,8 +1149,13 @@ async function start() {
     res.json({ notice, state: await getState(pool) })
   })
 
-  app.get('/api/loyalty/:clientId?', auth, async (req, res) => {
-    const clientId = req.params.clientId || req.user.id
+  app.get('/api/loyalty', auth, async (req, res) => {
+    const count = await ensureLoyaltyCoupon(pool, req.user.id)
+    res.json({ afinaciones: count, state: await getState(pool) })
+  })
+
+  app.get('/api/loyalty/:clientId', auth, async (req, res) => {
+    const clientId = req.params.clientId
     if (req.user.role === 'cliente' && clientId !== req.user.id) {
       return res.status(403).json({ error: 'No autorizado.' })
     }
