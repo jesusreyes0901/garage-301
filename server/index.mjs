@@ -140,7 +140,13 @@ async function getState(pool) {
   const [parts] = await pool.query('SELECT * FROM parts')
   const [partRequests] = await pool.query('SELECT * FROM part_requests')
   const [observations] = await pool.query('SELECT * FROM observations')
-  const [coupons] = await pool.query('SELECT * FROM coupons ORDER BY created_at DESC')
+  let coupons = []
+  try {
+    const [couponRows] = await pool.query('SELECT * FROM coupons ORDER BY created_at DESC')
+    coupons = couponRows
+  } catch {
+    coupons = []
+  }
 
   return {
     users: users.map(publicUser),
@@ -428,17 +434,33 @@ async function applySchema(pool) {
   }
 }
 
+async function columnExists(pool, table, column) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column],
+  )
+  return Number(rows[0].n) > 0
+}
+
+async function ensureColumn(pool, table, column, definition) {
+  if (await columnExists(pool, table, column)) return
+  try {
+    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`)
+    console.log(`MySQL: columna ${table}.${column} agregada`)
+  } catch (err) {
+    console.error(`MySQL: no se pudo agregar ${table}.${column}:`, err.message)
+  }
+}
+
 async function migrate(pool) {
   const alters = [
     'ALTER TABLE users ADD COLUMN email_verified TINYINT NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN verify_hash VARCHAR(120) DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN verify_expires DATETIME DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN verify_tries INT DEFAULT 0',
-    'ALTER TABLE users MODIFY phone VARCHAR(48) DEFAULT ""',
+    "ALTER TABLE users MODIFY phone VARCHAR(48) DEFAULT ''",
     'ALTER TABLE appointments MODIFY vehicle_id VARCHAR(32) NULL',
-    'ALTER TABLE appointments ADD COLUMN vehicle_brand VARCHAR(80) DEFAULT ""',
-    'ALTER TABLE appointments ADD COLUMN vehicle_model VARCHAR(80) DEFAULT ""',
-    'ALTER TABLE appointments ADD COLUMN vehicle_year INT DEFAULT NULL',
     'ALTER TABLE work_orders MODIFY vehicle_id VARCHAR(32) NULL',
   ]
   for (const sql of alters) {
@@ -449,22 +471,30 @@ async function migrate(pool) {
     }
   }
 
-  const [couponCount] = await pool.query('SELECT COUNT(*) AS n FROM coupons')
-  if (couponCount[0].n === 0) {
-    await pool.query(
-      `INSERT INTO coupons (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
-       VALUES (?,?,?,?,?,?,?,?,1,NULL,NULL,NOW(),NULL)`,
-      [
-        uid('cp'),
-        'AFINACION5',
-        'Descuento por fidelidad en afinación',
-        'Con 5 o más afinaciones en Garage 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
-        15,
-        0,
-        'Afinación mayor',
-        5,
-      ],
-    )
+  await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
+  await ensureColumn(pool, 'appointments', 'vehicle_model', "VARCHAR(80) DEFAULT ''")
+  await ensureColumn(pool, 'appointments', 'vehicle_year', 'INT DEFAULT NULL')
+
+  try {
+    const [couponCount] = await pool.query('SELECT COUNT(*) AS n FROM coupons')
+    if (couponCount[0].n === 0) {
+      await pool.query(
+        `INSERT INTO coupons (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
+         VALUES (?,?,?,?,?,?,?,?,1,NULL,NULL,NOW(),NULL)`,
+        [
+          uid('cp'),
+          'AFINACION5',
+          'Descuento por fidelidad en afinación',
+          'Con 5 o más afinaciones en Garage 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
+          15,
+          0,
+          'Afinación mayor',
+          5,
+        ],
+      )
+    }
+  } catch (err) {
+    console.error('MySQL: cupones no listos aún:', err.message)
   }
 }
 
@@ -904,7 +934,11 @@ async function start() {
   app.get('/api/state', auth, async (req, res) => {
     const [users] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [req.user.id])
     if (req.user.role === 'cliente') {
-      await ensureLoyaltyCoupon(pool, req.user.id)
+      try {
+        await ensureLoyaltyCoupon(pool, req.user.id)
+      } catch (err) {
+        console.error('Loyalty al cargar estado:', err.message)
+      }
     }
     res.json({
       state: await getState(pool),
@@ -958,63 +992,131 @@ async function start() {
   })
 
   app.post('/api/appointments', auth, async (req, res) => {
-    const date = String(req.body.date || '').slice(0, 10)
-    const time = normalizeTime(req.body.time)
-    const slots = workSlotsForDate(date)
-    if (!date || !slots.includes(time)) {
-      return res.json({ error: 'Elige un día y un horario del calendario.' })
+    try {
+      const date = String(req.body.date || '').slice(0, 10)
+      const time = normalizeTime(req.body.time)
+      const slots = workSlotsForDate(date)
+      if (!date || !slots.includes(time)) {
+        return res.json({ error: 'Elige un día y un horario del calendario.' })
+      }
+      const day = new Date(`${date}T12:00:00`)
+      if (Number.isNaN(day.getTime()) || day.getDay() === 0) {
+        return res.json({ error: 'El taller no agenda en domingo.' })
+      }
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (day < today) return res.json({ error: 'No se puede agendar en una fecha pasada.' })
+      if (day.getDay() === 6 && time > '14:00') {
+        return res.json({ error: 'Los sábados solo se agenda de 9:00 a 14:00.' })
+      }
+      const hour = time.slice(0, 2)
+      const [busy] = await pool.query(
+        `SELECT COUNT(*) AS n FROM appointments
+         WHERE date=? AND LEFT(time,2)=? AND status<>'cancelada'`,
+        [date, hour],
+      )
+      if (busy[0].n >= SLOT_CAPACITY) {
+        return res.json({ error: 'Ese horario ya no tiene espacio. Elige otro en verde o amarillo.' })
+      }
+      const vehicleId = String(req.body.vehicleId || '').trim() || null
+      const vehicleBrand = String(req.body.vehicleBrand || '').trim()
+      const vehicleModel = String(req.body.vehicleModel || '').trim()
+      const vehicleYearRaw = req.body.vehicleYear
+      const vehicleYear =
+        vehicleYearRaw === '' || vehicleYearRaw == null ? null : Number(vehicleYearRaw)
+      if (!vehicleBrand || !vehicleModel || !Number.isFinite(vehicleYear)) {
+        return res.json({ error: 'Indica marca, modelo y año del vehículo.' })
+      }
+      const clientId = req.user.role === 'cliente' ? req.user.id : req.body.clientId
+      const id = uid('a')
+      const notesBase = String(req.body.notes || '')
+      const vehicleNote = `${vehicleBrand} ${vehicleModel} ${vehicleYear}`.trim()
+
+      await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
+      await ensureColumn(pool, 'appointments', 'vehicle_model', "VARCHAR(80) DEFAULT ''")
+      await ensureColumn(pool, 'appointments', 'vehicle_year', 'INT DEFAULT NULL')
+
+      const hasBrand = await columnExists(pool, 'appointments', 'vehicle_brand')
+      try {
+        if (hasBrand) {
+          await pool.query(
+            `INSERT INTO appointments
+             (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              id,
+              clientId,
+              vehicleId,
+              date,
+              time,
+              req.body.service,
+              req.body.status || 'pendiente',
+              notesBase,
+              vehicleBrand,
+              vehicleModel,
+              vehicleYear,
+            ],
+          )
+        } else {
+          const notes = notesBase
+            ? `${notesBase}\nVehículo: ${vehicleNote}`
+            : `Vehículo: ${vehicleNote}`
+          await pool.query(
+            'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,?,?,?,?,?,?)',
+            [id, clientId, vehicleId, date, time, req.body.service, req.body.status || 'pendiente', notes],
+          )
+        }
+      } catch (insertErr) {
+        // Si falla por FK de vehículo inexistente, guarda sin vehicle_id
+        if (vehicleId && /foreign key|Cannot add or update/i.test(insertErr.message || '')) {
+          await pool.query(
+            hasBrand
+              ? `INSERT INTO appointments
+                 (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
+                 VALUES (?,?,NULL,?,?,?,?,?,?,?,?)`
+              : 'INSERT INTO appointments (id,client_id,vehicle_id,date,time,service,status,notes) VALUES (?,?,NULL,?,?,?,?,?)',
+            hasBrand
+              ? [
+                  id,
+                  clientId,
+                  date,
+                  time,
+                  req.body.service,
+                  req.body.status || 'pendiente',
+                  notesBase,
+                  vehicleBrand,
+                  vehicleModel,
+                  vehicleYear,
+                ]
+              : [
+                  id,
+                  clientId,
+                  date,
+                  time,
+                  req.body.service,
+                  req.body.status || 'pendiente',
+                  notesBase ? `${notesBase}\nVehículo: ${vehicleNote}` : `Vehículo: ${vehicleNote}`,
+                ],
+          )
+        } else {
+          throw insertErr
+        }
+      }
+
+      try {
+        if (req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
+          await ensureLoyaltyCoupon(pool, req.user.id)
+        }
+      } catch (loyalErr) {
+        console.error('Cupón fidelidad (no bloquea cita):', loyalErr.message)
+      }
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al agendar cita:', err)
+      res.status(500).json({
+        error: err.message || 'No se pudo agendar la cita. Intenta de nuevo.',
+      })
     }
-    const day = new Date(`${date}T12:00:00`)
-    if (Number.isNaN(day.getTime()) || day.getDay() === 0) {
-      return res.json({ error: 'El taller no agenda en domingo.' })
-    }
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (day < today) return res.json({ error: 'No se puede agendar en una fecha pasada.' })
-    if (day.getDay() === 6 && time > '14:00') {
-      return res.json({ error: 'Los sábados solo se agenda de 9:00 a 14:00.' })
-    }
-    const hour = time.slice(0, 2)
-    const [busy] = await pool.query(
-      `SELECT COUNT(*) AS n FROM appointments
-       WHERE date=? AND LEFT(time,2)=? AND status<>'cancelada'`,
-      [date, hour],
-    )
-    if (busy[0].n >= SLOT_CAPACITY) {
-      return res.json({ error: 'Ese horario ya no tiene espacio. Elige otro en verde o amarillo.' })
-    }
-    const vehicleId = String(req.body.vehicleId || '').trim() || null
-    const vehicleBrand = String(req.body.vehicleBrand || '').trim()
-    const vehicleModel = String(req.body.vehicleModel || '').trim()
-    const vehicleYearRaw = req.body.vehicleYear
-    const vehicleYear =
-      vehicleYearRaw === '' || vehicleYearRaw == null ? null : Number(vehicleYearRaw)
-    if (!vehicleBrand || !vehicleModel || !vehicleYear) {
-      return res.json({ error: 'Indica marca, modelo y año del vehículo.' })
-    }
-    const id = uid('a')
-    await pool.query(
-      `INSERT INTO appointments
-       (id,client_id,vehicle_id,date,time,service,status,notes,vehicle_brand,vehicle_model,vehicle_year)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        id,
-        req.user.role === 'cliente' ? req.user.id : req.body.clientId,
-        vehicleId,
-        date,
-        time,
-        req.body.service,
-        req.body.status || 'pendiente',
-        req.body.notes || '',
-        vehicleBrand,
-        vehicleModel,
-        vehicleYear,
-      ],
-    )
-    if (req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
-      await ensureLoyaltyCoupon(pool, req.user.id)
-    }
-    res.json({ state: await getState(pool) })
   })
 
   app.patch('/api/appointments/:id', auth, async (req, res) => {

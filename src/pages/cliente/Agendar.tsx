@@ -13,6 +13,7 @@ import {
   todayKey,
   workSlotsForDate,
 } from '../../schedule'
+import { BrandModelFields } from '../../components/BrandModelFields'
 import { useStore } from '../../store'
 import { SERVICES } from '../../types'
 
@@ -126,38 +127,15 @@ export function ClienteAgendar() {
                 ))}
               </select>
             </label>
-            <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 120px' }}>
-              <label>
-                Marca
-                <input
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  placeholder="Nissan, Honda…"
-                  required
-                />
-              </label>
-              <label>
-                Modelo
-                <input
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="Sentra, Civic…"
-                  required
-                />
-              </label>
-              <label>
-                Año
-                <input
-                  type="number"
-                  min={1950}
-                  max={now.getFullYear() + 1}
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  placeholder="2020"
-                  required
-                />
-              </label>
-            </div>
+            <BrandModelFields
+              brand={brand}
+              model={model}
+              year={year}
+              onBrand={setBrand}
+              onModel={setModel}
+              onYear={setYear}
+              required
+            />
             <div className="schedule-layout">
               <div>
                 <div className="cal-head">

@@ -51,7 +51,9 @@ async function api(path: string, options: RequestInit = {}) {
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    throw new Error(data.error || 'No se pudo conectar con el servidor / MySQL.')
+    throw new Error(
+      data.error || `Error del servidor (${res.status}). Intenta de nuevo en unos segundos.`,
+    )
   }
   return data
 }

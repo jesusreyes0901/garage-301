@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandLogo } from '../components/BrandLogo'
+import { BrandModelFields } from '../components/BrandModelFields'
 import { PasswordField } from '../components/PasswordField'
 import { PhoneField } from '../components/PhoneField'
 import { validEmail, validPhone } from '../countries'
@@ -160,21 +161,16 @@ export function Registro() {
             {photo && (
               <img className="vehicle-thumb" src={photo} alt="Vehículo" style={{ width: 96, height: 96 }} />
             )}
+            <BrandModelFields
+              brand={brand}
+              model={model}
+              year={year}
+              onBrand={setBrand}
+              onModel={setModel}
+              onYear={(v) => setYear(Number(v) || year)}
+              yearMin={1980}
+            />
             <div className="form-row">
-              <label>
-                Marca
-                <input value={brand} onChange={(e) => setBrand(e.target.value)} />
-              </label>
-              <label>
-                Modelo
-                <input value={model} onChange={(e) => setModel(e.target.value)} />
-              </label>
-            </div>
-            <div className="form-row">
-              <label>
-                Año
-                <input type="number" min={1980} value={year} onChange={(e) => setYear(Number(e.target.value))} />
-              </label>
               <label>
                 Color
                 <input value={color} onChange={(e) => setColor(e.target.value)} />
