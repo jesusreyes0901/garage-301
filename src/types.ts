@@ -26,6 +26,8 @@ export interface User {
   phone: string
   address: string
   avatar: string
+  /** Afinaciones ya canjeadas; el contador visible = total − baseline */
+  loyaltyBaseline?: number
   recovery?: {
     hash: string
     expiresAt: number

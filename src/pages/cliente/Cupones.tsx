@@ -8,6 +8,7 @@ export function countAfinaciones(
   appointments: { clientId: string; service: string; status: string; orderId?: string }[],
   orders: { clientId: string; description: string; status: string }[],
   clientId: string,
+  loyaltyBaseline = 0,
 ) {
   const linked = appointments.filter(
     (a) =>
@@ -28,7 +29,8 @@ export function countAfinaciones(
       /afinaci/i.test(o.description) &&
       ['lista', 'entregada', 'en_proceso'].includes(o.status),
   ).length
-  return Math.max(0, appts - linked) + ords
+  const total = Math.max(0, appts - linked) + ords
+  return Math.max(0, total - (loyaltyBaseline || 0))
 }
 
 function couponVisible(c: Coupon, clientId: string, afinaciones: number, today: string) {
@@ -43,7 +45,10 @@ export function ClienteCupones() {
   const { state, user } = useStore()
   const today = new Date().toISOString().slice(0, 10)
   const afinaciones = useMemo(
-    () => (user ? countAfinaciones(state.appointments, state.orders, user.id) : 0),
+    () =>
+      user
+        ? countAfinaciones(state.appointments, state.orders, user.id, user.loyaltyBaseline || 0)
+        : 0,
     [state.appointments, state.orders, user],
   )
   const visible = useMemo(
@@ -70,7 +75,7 @@ export function ClienteCupones() {
       <div className="page-head">
         <div>
           <h2>Mis cupones</h2>
-          <p>Usa un cupón para ir directo a agendar con el descuento aplicado.</p>
+          <p>Usa un cupón para agendar con descuento. Al usarlo, el contador de 5 afinaciones se reinicia.</p>
         </div>
       </div>
       <div className="grid stats" style={{ marginBottom: 16 }}>
@@ -82,7 +87,7 @@ export function ClienteCupones() {
           <div className="hint">
             {afinaciones >= 5
               ? 'Ya calificas para descuento en afinación'
-              : `Te faltan ${5 - afinaciones} para el cupón de fidelidad`}
+              : `Te faltan ${5 - afinaciones} en este ciclo (tras usar el cupón el contador vuelve a 0)`}
           </div>
         </div>
       </div>

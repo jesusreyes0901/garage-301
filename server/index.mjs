@@ -89,6 +89,7 @@ function publicUser(row) {
     phone: row.phone || '',
     address: row.address || '',
     avatar: row.avatar || '',
+    loyaltyBaseline: Number(row.loyalty_baseline || 0),
   }
 }
 
@@ -514,6 +515,7 @@ async function migrate(pool) {
   await ensureColumn(pool, 'appointments', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+  await ensureColumn(pool, 'users', 'loyalty_baseline', 'INT NOT NULL DEFAULT 0')
 
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS order_materials (
@@ -564,8 +566,6 @@ async function countClientAfinaciones(pool, clientId) {
      WHERE client_id=? AND status IN ('lista','entregada','en_proceso') AND description LIKE '%Afinaci%'`,
     [clientId],
   )
-  // Evita doble conteo cuando la cita ya generó orden: usa el máximo como aproximación conservadora
-  // Preferimos contar citas + órdenes sin cita vinculada
   const [linked] = await pool.query(
     `SELECT COUNT(*) AS n FROM appointments
      WHERE client_id=? AND order_id IS NOT NULL AND status IN ('confirmada','en_proceso','completada')
@@ -576,23 +576,51 @@ async function countClientAfinaciones(pool, clientId) {
   return Math.max(0, apptOnly) + Number(fromOrders[0].n)
 }
 
+async function getLoyaltyBaseline(pool, clientId) {
+  const [rows] = await pool.query('SELECT loyalty_baseline FROM users WHERE id=? LIMIT 1', [clientId])
+  return Number(rows[0]?.loyalty_baseline || 0)
+}
+
+async function effectiveAfinaciones(pool, clientId) {
+  const total = await countClientAfinaciones(pool, clientId)
+  const baseline = await getLoyaltyBaseline(pool, clientId)
+  return Math.max(0, total - baseline)
+}
+
+/** Al usar cupón de fidelidad: reinicia el contador a 0 para volver a juntar 5. */
+async function resetLoyaltyCounter(pool, clientId) {
+  const total = await countClientAfinaciones(pool, clientId)
+  await pool.query('UPDATE users SET loyalty_baseline=? WHERE id=?', [total, clientId])
+  await pool.query(`DELETE FROM coupons WHERE client_id=? AND (code LIKE 'LOYAL-%' OR UPPER(code)='AFINACION5')`, [
+    clientId,
+  ])
+  return 0
+}
+
+function isLoyaltyCoupon(coupon) {
+  if (!coupon) return false
+  const code = String(coupon.code || '').toUpperCase()
+  if (code === 'AFINACION5' || code.startsWith('LOYAL-')) return true
+  return Number(coupon.min_afinaciones || 0) >= 5 && /afinaci/i.test(coupon.service_type || '')
+}
+
 async function ensureLoyaltyCoupon(pool, clientId) {
-  const count = await countClientAfinaciones(pool, clientId)
-  if (count < 5) return count
+  const effective = await effectiveAfinaciones(pool, clientId)
+  if (effective < 5) return effective
   const [existing] = await pool.query(
     `SELECT id FROM coupons WHERE client_id=? AND code LIKE 'LOYAL-%' AND active=1 LIMIT 1`,
     [clientId],
   )
-  if (existing.length) return count
-  const code = `LOYAL-${String(clientId).slice(-6).toUpperCase()}-${count}`
+  if (existing.length) return effective
+  const code = `LOYAL-${String(clientId).slice(-6).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`
   await pool.query(
     `INSERT INTO coupons (id,code,title,description,discount_percent,discount_amount,service_type,min_afinaciones,active,client_id,created_by,created_at,expires_at)
      VALUES (?,?,?,?,?,?,?,?,1,?,?,NOW(),NULL)`,
     [
       uid('cp'),
       code,
-      'Cupón por 5+ afinaciones',
-      `Has acumulado ${count} afinaciones. Este cupón te da descuento en tu próxima afinación en Garage 301.`,
+      'Cupón por 5 afinaciones',
+      `Completaste 5 afinaciones en este ciclo. Usa el cupón y el contador vuelve a cero para juntar otras 5.`,
       15,
       0,
       'Afinación mayor',
@@ -601,7 +629,7 @@ async function ensureLoyaltyCoupon(pool, clientId) {
       clientId,
     ],
   )
-  return count
+  return effective
 }
 
 function validEmail(email) {
@@ -1261,7 +1289,6 @@ async function start() {
       }
 
       try {
-        // Si usó cupón, no regenerar el de fidelidad en el mismo paso
         if (!couponCode && req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
           await ensureLoyaltyCoupon(pool, req.user.id)
         }
@@ -1271,13 +1298,32 @@ async function start() {
 
       if (couponCode) {
         try {
-          await pool.query('DELETE FROM coupons WHERE UPPER(code)=?', [couponCode])
+          const [couponRows] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [
+            couponCode,
+          ])
+          const used = couponRows[0]
+          if (isLoyaltyCoupon(used)) {
+            await resetLoyaltyCounter(pool, clientId)
+            // AFINACION5 global se mantiene para el próximo ciclo; se oculta por el contador en 0
+            if (String(couponCode).toUpperCase() !== 'AFINACION5') {
+              await pool.query('DELETE FROM coupons WHERE UPPER(code)=? AND (client_id=? OR client_id IS NULL)', [
+                couponCode,
+                clientId,
+              ])
+            }
+          } else {
+            await pool.query('DELETE FROM coupons WHERE UPPER(code)=?', [couponCode])
+          }
         } catch (delErr) {
-          console.error('No se pudo borrar cupón usado:', delErr.message)
+          console.error('No se pudo procesar cupón usado:', delErr.message)
         }
       }
 
-      res.json({ state: await getState(pool) })
+      const [me] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [clientId])
+      res.json({
+        state: await getState(pool),
+        user: me[0] ? publicUser(me[0]) : undefined,
+      })
     } catch (err) {
       console.error('Error al agendar cita:', err)
       res.status(500).json({

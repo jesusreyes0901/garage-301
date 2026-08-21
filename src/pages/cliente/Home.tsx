@@ -10,7 +10,9 @@ export function ClienteHome() {
   const myAppointments = state.appointments.filter((a) => a.clientId === user?.id)
   const myObs = state.observations.filter((o) => myVehicles.some((v) => v.id === o.vehicleId))
   const myParts = state.partRequests.filter((r) => r.clientId === user?.id)
-  const afinaciones = user ? countAfinaciones(state.appointments, state.orders, user.id) : 0
+  const afinaciones = user
+    ? countAfinaciones(state.appointments, state.orders, user.id, user.loyaltyBaseline || 0)
+    : 0
   const today = new Date().toISOString().slice(0, 10)
   const myCoupons = state.coupons.filter((c) => {
     if (!user || !c.active) return false
