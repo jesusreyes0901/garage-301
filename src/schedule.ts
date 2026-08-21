@@ -6,7 +6,8 @@ export const WEEKDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:0
 export const SATURDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00']
 /** @deprecated usa workSlotsForDate */
 export const WORK_SLOTS = WEEKDAY_SLOTS
-export const SLOT_CAPACITY = 2
+/** Un solo auto por horario */
+export const SLOT_CAPACITY = 1
 export const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export type DayTone = 'green' | 'yellow' | 'red' | 'closed' | 'past'
@@ -42,12 +43,34 @@ export function slotOf(time: string, date?: string) {
   return slots.includes(hour) ? hour : hhmm
 }
 
-function isActive(a: Appointment) {
-  return a.status !== 'cancelada'
+export function slotMinutes(time: string) {
+  const [h, m] = String(time || '0:0').slice(0, 5).split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+export function nowMinutes() {
+  const d = new Date()
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+/** Horario aún reservable (no pasó la hora de inicio del slot). */
+export function isSlotOpenNow(date: string, time: string) {
+  const day = toDayKey(date)
+  const today = todayKey()
+  if (day < today) return false
+  if (day > today) return true
+  return slotMinutes(time) > nowMinutes()
+}
+
+/** Citas que aún ocupan bahía / horario. */
+function occupiesSlot(a: Appointment) {
+  return a.status !== 'cancelada' && a.status !== 'completada'
 }
 
 export function slotTaken(appointments: Appointment[], date: string, time: string) {
-  return appointments.filter((a) => isActive(a) && toDayKey(a.date) === date && slotOf(a.time, date) === time).length
+  return appointments.filter(
+    (a) => occupiesSlot(a) && toDayKey(a.date) === date && slotOf(a.time, date) === time,
+  ).length
 }
 
 export function slotTone(taken: number): SlotTone {
@@ -57,7 +80,9 @@ export function slotTone(taken: number): SlotTone {
 }
 
 export function remainingTimes(appointments: Appointment[], date: string) {
-  return workSlotsForDate(date).filter((time) => slotTaken(appointments, date, time) < SLOT_CAPACITY)
+  return workSlotsForDate(date).filter(
+    (time) => isSlotOpenNow(date, time) && slotTaken(appointments, date, time) < SLOT_CAPACITY,
+  )
 }
 
 export function dayTone(appointments: Appointment[], date: string): DayTone {
@@ -67,10 +92,16 @@ export function dayTone(appointments: Appointment[], date: string): DayTone {
   startToday.setHours(0, 0, 0, 0)
   if (day < startToday) return 'past'
   if (day.getDay() === 0) return 'closed'
+
   const slots = workSlotsForDate(date)
+  if (toDayKey(date) === todayKey()) {
+    const last = slots[slots.length - 1]
+    if (nowMinutes() >= slotMinutes(last)) return 'past'
+  }
+
   const left = remainingTimes(appointments, date)
   if (left.length === 0) return 'red'
-  if (left.length === slots.length) return 'green'
+  if (left.length === slots.filter((t) => isSlotOpenNow(date, t)).length) return 'green'
   return 'yellow'
 }
 

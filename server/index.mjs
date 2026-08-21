@@ -94,7 +94,7 @@ function publicUser(row) {
 
 const WEEKDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
 const SATURDAY_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00']
-const SLOT_CAPACITY = 2
+const SLOT_CAPACITY = 1
 
 function workSlotsForDate(date) {
   const day = new Date(`${date}T12:00:00`).getDay()
@@ -1067,11 +1067,27 @@ async function start() {
       const hour = time.slice(0, 2)
       const [busy] = await pool.query(
         `SELECT COUNT(*) AS n FROM appointments
-         WHERE date=? AND LEFT(time,2)=? AND status<>'cancelada'`,
+         WHERE date=? AND LEFT(time,2)=? AND status NOT IN ('cancelada','completada')`,
         [date, hour],
       )
       if (busy[0].n >= SLOT_CAPACITY) {
-        return res.json({ error: 'Ese horario ya no tiene espacio. Elige otro en verde o amarillo.' })
+        return res.json({ error: 'Ese horario ya está ocupado. Elige otro en verde.' })
+      }
+
+      const now = new Date()
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      if (date === todayStr) {
+        const [hh, mm] = time.split(':').map(Number)
+        const slotMin = hh * 60 + (mm || 0)
+        const nowMin = now.getHours() * 60 + now.getMinutes()
+        if (slotMin <= nowMin) {
+          return res.json({ error: 'Ese horario ya pasó. Elige otro o un día posterior.' })
+        }
+        const lastSlot = slots[slots.length - 1]
+        const [lh, lm] = lastSlot.split(':').map(Number)
+        if (nowMin >= lh * 60 + (lm || 0)) {
+          return res.json({ error: 'Ya cerró el horario de atención de hoy.' })
+        }
       }
       const vehicleId = String(req.body.vehicleId || '').trim() || null
       const vehicleBrand = String(req.body.vehicleBrand || '').trim()
@@ -1245,12 +1261,22 @@ async function start() {
       }
 
       try {
-        if (req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
+        // Si usó cupón, no regenerar el de fidelidad en el mismo paso
+        if (!couponCode && req.user.role === 'cliente' && isAfinacionText(req.body.service)) {
           await ensureLoyaltyCoupon(pool, req.user.id)
         }
       } catch (loyalErr) {
         console.error('Cupón fidelidad (no bloquea cita):', loyalErr.message)
       }
+
+      if (couponCode) {
+        try {
+          await pool.query('DELETE FROM coupons WHERE UPPER(code)=?', [couponCode])
+        } catch (delErr) {
+          console.error('No se pudo borrar cupón usado:', delErr.message)
+        }
+      }
+
       res.json({ state: await getState(pool) })
     } catch (err) {
       console.error('Error al agendar cita:', err)
@@ -1398,6 +1424,8 @@ async function start() {
         }
       }
       await pool.query('UPDATE work_orders SET status=? WHERE id=?', ['entregada', req.params.id])
+      // Libera el horario: la cita deja de ocupar bahía y el día puede volver a verde
+      await pool.query(`UPDATE appointments SET status='completada' WHERE order_id=?`, [req.params.id])
       if (order.vehicle_id) {
         await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['entregado', order.vehicle_id])
       }

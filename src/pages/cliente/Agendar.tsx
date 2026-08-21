@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   WEEKDAYS,
-  SLOT_CAPACITY,
   dayTone,
+  isSlotOpenNow,
   monthCells,
   monthLabel,
   remainingTimes,
@@ -22,9 +22,7 @@ export function ClienteAgendar() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const couponFromUrl = (searchParams.get('cupon') || '').trim().toUpperCase()
-  const mine = state.vehicles.filter((v) => v.ownerId === user?.id)
   const now = new Date()
-  const [vehicleId, setVehicleId] = useState(mine[0]?.id ?? '')
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
   const [year, setYear] = useState('')
@@ -36,8 +34,6 @@ export function ClienteAgendar() {
   const [couponCode, setCouponCode] = useState(couponFromUrl)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const selectedVehicle = mine.find((v) => v.id === vehicleId)
 
   const activeCoupon = useMemo(() => {
     if (!couponCode || !user) return null
@@ -53,18 +49,6 @@ export function ClienteAgendar() {
   }, [couponCode, state.coupons, user])
 
   const breakdown = activeCoupon ? couponDiscountBreakdown(activeCoupon) : null
-
-  useEffect(() => {
-    if (selectedVehicle) {
-      setBrand(selectedVehicle.brand)
-      setModel(selectedVehicle.model)
-      setYear(String(selectedVehicle.year))
-    } else {
-      setBrand('')
-      setModel('')
-      setYear('')
-    }
-  }, [selectedVehicle])
 
   useEffect(() => {
     if (!couponFromUrl) return
@@ -101,6 +85,10 @@ export function ClienteAgendar() {
       setError('Elige un horario disponible.')
       return
     }
+    if (!isSlotOpenNow(date, time)) {
+      setError('Ese horario ya pasó. Elige otro o un día posterior.')
+      return
+    }
     if (!brand.trim() || !model.trim() || !year.trim()) {
       setError('Indica marca, modelo y año del vehículo.')
       return
@@ -126,7 +114,7 @@ export function ClienteAgendar() {
         : ''
     const result = await addAppointment({
       clientId: user.id,
-      vehicleId: vehicleId || '',
+      vehicleId: '',
       date,
       time,
       service,
@@ -152,8 +140,8 @@ export function ClienteAgendar() {
           <h2>Agendar cita</h2>
           <p>
             {activeCoupon
-              ? `Cupón ${activeCoupon.code} aplicado. Elige día y horario.`
-              : 'Elige el día en el calendario y un horario con espacio. Sábados: 9:00–14:00.'}
+              ? `Cupón ${activeCoupon.code} aplicado. Un auto por horario.`
+              : 'Un auto por horario. Sábados 9:00–14:00 · Lun–Vie 9:00–17:00.'}
           </p>
         </div>
       </div>
@@ -179,17 +167,6 @@ export function ClienteAgendar() {
               </div>
             </div>
           )}
-          <label>
-            Vehículo registrado (opcional)
-            <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-              <option value="">Sin vehículo registrado — lo indico abajo</option>
-              {mine.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plate} · {v.brand} {v.model}
-                </option>
-              ))}
-            </select>
-          </label>
           <BrandModelFields
             brand={brand}
             model={model}
@@ -238,7 +215,7 @@ export function ClienteAgendar() {
                   <i className="dot green" /> Día libre
                 </span>
                 <span>
-                  <i className="dot yellow" /> Se está llenando
+                  <i className="dot yellow" /> Con citas / se llena
                 </span>
                 <span>
                   <i className="dot red" /> Sin espacio
@@ -254,21 +231,27 @@ export function ClienteAgendar() {
                 })}
               </h3>
               {isSaturday && (tone === 'green' || tone === 'yellow') && (
-                <p className="slot-note">Sábado: horario de 9:00 a 14:00.</p>
+                <p className="slot-note">Sábado: 9:00 a 14:00 · 1 auto por hora.</p>
               )}
-              {tone === 'past' && <p className="empty">Esa fecha ya pasó.</p>}
+              {tone === 'past' && (
+                <p className="empty">
+                  {date === todayKey()
+                    ? 'Ya pasó el horario de atención de hoy.'
+                    : 'Esa fecha ya pasó.'}
+                </p>
+              )}
               {tone === 'closed' && <p className="empty">Domingo cerrado.</p>}
               {tone === 'red' && <p className="empty">Este día ya no tiene horarios libres.</p>}
               {tone === 'yellow' && (
-                <p className="slot-note">El día se está llenando. Quedan: {freeTimes.join(', ')}.</p>
+                <p className="slot-note">Quedan libres: {freeTimes.join(', ') || 'ninguno'}.</p>
               )}
-              {tone === 'green' && <p className="slot-note">Día disponible. Elige un horario.</p>}
+              {tone === 'green' && <p className="slot-note">Día disponible. Elige un horario (1 auto).</p>}
               {(tone === 'green' || tone === 'yellow') && (
                 <div className="slot-grid">
                   {daySlots.map((slot) => {
                     const taken = slotTaken(state.appointments, date, slot)
-                    const st = slotTone(taken)
-                    const left = SLOT_CAPACITY - taken
+                    const open = isSlotOpenNow(date, slot)
+                    const st = !open ? 'red' : slotTone(taken)
                     return (
                       <button
                         key={slot}
@@ -278,9 +261,7 @@ export function ClienteAgendar() {
                         onClick={() => setTime(slot)}
                       >
                         <strong>{slot}</strong>
-                        <span>
-                          {st === 'red' ? 'Lleno' : st === 'yellow' ? `Queda ${left}` : 'Libre'}
-                        </span>
+                        <span>{!open ? 'Pasó' : st === 'red' ? 'Ocupado' : 'Libre'}</span>
                       </button>
                     )
                   })}

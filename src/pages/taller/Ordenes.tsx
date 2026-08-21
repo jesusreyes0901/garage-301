@@ -31,6 +31,7 @@ const emptyLine = (): MaterialDraft => ({
 
 export function TallerOrdenes() {
   const { state, addOrder, updateOrderStatus, deliverOrder } = useStore()
+  const openOrders = state.orders.filter((o) => o.status !== 'entregada')
   const [open, setOpen] = useState(false)
   const [vehicleId, setVehicleId] = useState(state.vehicles[0]?.id ?? '')
   const [mechanic, setMechanic] = useState('Miguel Torres')
@@ -100,7 +101,7 @@ export function TallerOrdenes() {
       <div className="page-head">
         <div>
           <h2>Órdenes de trabajo</h2>
-          <p>Al marcar entregada puedes capturar materiales y precios; eso ajusta gastos y utilidad.</p>
+          <p>Al entregar, la orden se cierra y sale de esta lista. Los gastos ajustan la utilidad del resumen.</p>
         </div>
         <button className="btn" type="button" onClick={() => setOpen((v) => !v)}>
           {open ? 'Cerrar' : 'Nueva orden'}
@@ -162,7 +163,12 @@ export function TallerOrdenes() {
         </div>
       )}
       <div className="grid two">
-        {state.orders.map((o) => {
+        {openOrders.length === 0 && (
+          <div className="card">
+            <p className="empty">No hay órdenes abiertas. Las entregadas ya no aparecen aquí.</p>
+          </div>
+        )}
+        {openOrders.map((o) => {
           const v = vehicleById(state.vehicles, o.vehicleId)
           const c = userById(state.users, o.clientId)
           const ingreso = orderIncome(o, state.parts)
