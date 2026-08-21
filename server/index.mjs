@@ -137,6 +137,13 @@ async function getState(pool) {
   const [appointments] = await pool.query('SELECT * FROM appointments')
   const [orders] = await pool.query('SELECT * FROM work_orders')
   const [orderParts] = await pool.query('SELECT * FROM order_parts')
+  let orderMaterials = []
+  try {
+    const [mats] = await pool.query('SELECT * FROM order_materials')
+    orderMaterials = mats
+  } catch {
+    orderMaterials = []
+  }
   const [parts] = await pool.query('SELECT * FROM parts')
   const [partRequests] = await pool.query('SELECT * FROM part_requests')
   const [observations] = await pool.query('SELECT * FROM observations')
@@ -187,9 +194,21 @@ async function getState(pool) {
       status: o.status,
       createdAt: new Date(o.created_at).toISOString(),
       labor: Number(o.labor),
+      discount: Number(o.discount || 0),
+      couponCode: o.coupon_code || undefined,
       parts: orderParts
         .filter((p) => p.order_id === o.id)
         .map((p) => ({ partId: p.part_id, qty: p.qty })),
+      materials: (orderMaterials || [])
+        .filter((m) => m.order_id === o.id)
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          qty: Number(m.qty) || 1,
+          cost: Number(m.cost) || 0,
+          price: Number(m.price) || 0,
+          partId: m.part_id || undefined,
+        })),
     })),
     parts: parts.map((p) => ({
       id: p.id,
@@ -304,6 +323,16 @@ CREATE TABLE IF NOT EXISTS order_parts (
   FOREIGN KEY (order_id) REFERENCES work_orders(id) ON DELETE CASCADE,
   FOREIGN KEY (part_id) REFERENCES parts(id)
 );
+CREATE TABLE IF NOT EXISTS order_materials (
+  id VARCHAR(32) PRIMARY KEY,
+  order_id VARCHAR(32) NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  qty INT NOT NULL DEFAULT 1,
+  cost DECIMAL(10,2) DEFAULT 0,
+  price DECIMAL(10,2) DEFAULT 0,
+  part_id VARCHAR(32) DEFAULT NULL,
+  FOREIGN KEY (order_id) REFERENCES work_orders(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS appointments (
   id VARCHAR(32) PRIMARY KEY,
   client_id VARCHAR(32) NOT NULL,
@@ -417,6 +446,11 @@ async function wipeDemoSeed(pool) {
   await pool.query("DELETE FROM observations WHERE id IN ('ob1','ob2')")
   await pool.query("DELETE FROM part_requests WHERE id = 'r1'")
   await pool.query("DELETE FROM appointments WHERE id IN ('a1','a2','a3')")
+  try {
+    await pool.query("DELETE FROM order_materials WHERE order_id IN ('o1','o2')")
+  } catch {
+    /* tabla nueva */
+  }
   await pool.query("DELETE FROM order_parts WHERE order_id IN ('o1','o2')")
   await pool.query("DELETE FROM work_orders WHERE id IN ('o1','o2')")
   await pool.query("DELETE FROM vehicles WHERE id IN ('v1','v2','v3')")
@@ -474,6 +508,23 @@ async function migrate(pool) {
   await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
   await ensureColumn(pool, 'appointments', 'vehicle_model', "VARCHAR(80) DEFAULT ''")
   await ensureColumn(pool, 'appointments', 'vehicle_year', 'INT DEFAULT NULL')
+  await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
+  await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS order_materials (
+      id VARCHAR(32) PRIMARY KEY,
+      order_id VARCHAR(32) NOT NULL,
+      name VARCHAR(160) NOT NULL,
+      qty INT NOT NULL DEFAULT 1,
+      cost DECIMAL(10,2) DEFAULT 0,
+      price DECIMAL(10,2) DEFAULT 0,
+      part_id VARCHAR(32) DEFAULT NULL,
+      FOREIGN KEY (order_id) REFERENCES work_orders(id) ON DELETE CASCADE
+    )`)
+  } catch (err) {
+    console.error('MySQL: order_materials:', err.message)
+  }
 
   try {
     const [couponCount] = await pool.query('SELECT COUNT(*) AS n FROM coupons')
@@ -1202,6 +1253,43 @@ async function start() {
   app.patch('/api/orders/:id', auth, async (req, res) => {
     if (req.body.status) await pool.query('UPDATE work_orders SET status=? WHERE id=?', [req.body.status, req.params.id])
     res.json({ state: await getState(pool) })
+  })
+
+  app.post('/api/orders/:id/deliver', auth, async (req, res) => {
+    try {
+      if (req.user.role !== 'taller') {
+        return res.status(403).json({ error: 'Solo el taller puede entregar órdenes.' })
+      }
+      const [rows] = await pool.query('SELECT * FROM work_orders WHERE id=?', [req.params.id])
+      const order = rows[0]
+      if (!order) return res.status(404).json({ error: 'Orden no encontrada' })
+
+      await pool.query('DELETE FROM order_materials WHERE order_id=?', [req.params.id])
+      const materials = Array.isArray(req.body.materials) ? req.body.materials : []
+      for (const m of materials) {
+        const name = String(m.name || '').trim()
+        if (!name) continue
+        const qty = Math.max(1, Number(m.qty) || 1)
+        const cost = Math.max(0, Number(m.cost) || 0)
+        const price = Math.max(0, Number(m.price) || 0)
+        const partId = String(m.partId || '').trim() || null
+        await pool.query(
+          'INSERT INTO order_materials (id,order_id,name,qty,cost,price,part_id) VALUES (?,?,?,?,?,?,?)',
+          [uid('om'), req.params.id, name, qty, cost, price, partId],
+        )
+        if (partId) {
+          await pool.query('UPDATE parts SET stock=GREATEST(0, stock-?) WHERE id=?', [qty, partId])
+        }
+      }
+      await pool.query('UPDATE work_orders SET status=? WHERE id=?', ['entregada', req.params.id])
+      if (order.vehicle_id) {
+        await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['entregado', order.vehicle_id])
+      }
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al entregar orden:', err)
+      res.status(500).json({ error: err.message || 'No se pudo entregar la orden.' })
+    }
   })
 
   app.patch('/api/vehicles/:id', auth, async (req, res) => {

@@ -2,7 +2,7 @@ import { CalendarPlus, MessageSquare, Package, Search, TicketPercent } from 'luc
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
 import { formatDay, useStore, vehicleById } from '../../store'
-import { countAfinaciones } from './Cupones'
+import { CouponView, countAfinaciones } from './Cupones'
 
 export function ClienteHome() {
   const { state, user } = useStore()
@@ -61,15 +61,7 @@ export function ClienteHome() {
               : `Llevas ${afinaciones} afinaciones.`}
           </p>
           {myCoupons.slice(0, 3).map((c) => (
-            <div className="coupon-card" key={c.id}>
-              <div className="code">{c.code}</div>
-              <strong>{c.title}</strong>
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {c.discountPercent > 0 ? `${c.discountPercent}%` : ''}
-                {c.discountPercent > 0 && c.discountAmount > 0 ? ' · ' : ''}
-                {c.discountAmount > 0 ? `$${c.discountAmount}` : ''} en {c.serviceType}
-              </div>
-            </div>
+            <CouponView key={c.id} coupon={c} applied />
           ))}
           <Link className="btn secondary" to="/cliente/cupones" style={{ marginTop: 8 }}>
             Ver todos los cupones

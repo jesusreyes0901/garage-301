@@ -4,6 +4,7 @@ import { BrandLogo } from '../components/BrandLogo'
 import { BrandModelFields } from '../components/BrandModelFields'
 import { PasswordField } from '../components/PasswordField'
 import { PhoneField } from '../components/PhoneField'
+import { TermsAcceptRow, TermsDialog } from '../components/TermsDialog'
 import { validEmail, validPhone } from '../countries'
 import { compressImage } from '../image'
 import { useStore } from '../store'
@@ -23,11 +24,17 @@ export function Registro() {
   const [year, setYear] = useState(2018)
   const [color, setColor] = useState('')
   const [photo, setPhoto] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [termsOpen, setTermsOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!acceptedTerms) {
+      setError('Debes aceptar el aviso de privacidad y términos para registrarte.')
+      return
+    }
     if (password !== confirm) {
       setError('Las contraseñas no coinciden.')
       return
@@ -176,8 +183,13 @@ export function Registro() {
                 <input value={color} onChange={(e) => setColor(e.target.value)} />
               </label>
             </div>
+            <TermsAcceptRow
+              checked={acceptedTerms}
+              onChange={setAcceptedTerms}
+              onOpen={() => setTermsOpen(true)}
+            />
             {error && <div className="error">{error}</div>}
-            <button className="btn" type="submit" disabled={busy}>
+            <button className="btn" type="submit" disabled={busy || !acceptedTerms}>
               {busy ? 'Creando cuenta…' : 'Registrarme'}
             </button>
           </form>
@@ -186,6 +198,7 @@ export function Registro() {
           </p>
         </div>
       </section>
+      <TermsDialog open={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   )
 }

@@ -107,6 +107,10 @@ interface StoreValue {
   updatePartRequest: (id: string, status: PartRequest['status']) => void
   addOrder: (o: Omit<WorkOrder, 'id' | 'folio' | 'createdAt'>) => void
   updateOrderStatus: (id: string, status: OrderStatus) => void
+  deliverOrder: (
+    id: string,
+    materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
+  ) => Promise<string | null>
   updateVehicleStatus: (id: string, status: Vehicle['status']) => void
   setVehiclePhoto: (id: string, photo: string) => void
   adjustStock: (partId: string, delta: number) => string | null
@@ -323,6 +327,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     mutate(`/api/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
   }, [mutate])
 
+  const deliverOrder = useCallback(
+    async (
+      id: string,
+      materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
+    ) => {
+      try {
+        const data = await api(`/api/orders/${id}/deliver`, {
+          method: 'POST',
+          body: JSON.stringify({ materials }),
+        })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo entregar la orden.'
+      }
+    },
+    [apply],
+  )
+
   const updateVehicleStatus = useCallback((id: string, status: Vehicle['status']) => {
     mutate(`/api/vehicles/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
   }, [mutate])
@@ -397,6 +421,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePartRequest,
       addOrder,
       updateOrderStatus,
+      deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,
       adjustStock,
@@ -425,6 +450,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePartRequest,
       addOrder,
       updateOrderStatus,
+      deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,
       adjustStock,
@@ -458,20 +484,21 @@ export function partById(parts: AppState['parts'], id: string) {
 }
 
 export function orderIncome(o: WorkOrder, parts: AppState['parts']) {
-  return (
-    o.labor +
-    o.parts.reduce((sum, line) => {
-      const p = partById(parts, line.partId)
-      return sum + (p?.price ?? 0) * line.qty
-    }, 0)
-  )
+  const partsIncome = o.parts.reduce((sum, line) => {
+    const p = partById(parts, line.partId)
+    return sum + (p?.price ?? 0) * line.qty
+  }, 0)
+  const materialsIncome = (o.materials || []).reduce((sum, m) => sum + (m.price || 0) * m.qty, 0)
+  return Math.max(0, o.labor + partsIncome + materialsIncome - (o.discount || 0))
 }
 
 export function orderExpense(o: WorkOrder, parts: AppState['parts']) {
-  return o.parts.reduce((sum, line) => {
+  const partsCost = o.parts.reduce((sum, line) => {
     const p = partById(parts, line.partId)
     return sum + (p?.cost ?? 0) * line.qty
   }, 0)
+  const materialsCost = (o.materials || []).reduce((sum, m) => sum + (m.cost || 0) * m.qty, 0)
+  return partsCost + materialsCost
 }
 
 export function formatMoney(n: number) {

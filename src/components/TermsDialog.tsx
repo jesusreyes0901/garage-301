@@ -1,27 +1,39 @@
 import { useEffect } from 'react'
 
-const TERMS_TEXT = `Términos y condiciones de uso — Garage 301
+export const TERMS_TEXT = `Aviso de privacidad y términos de uso — Garage 301
 
-1. Uso del portal
-Al iniciar sesión aceptas utilizar esta plataforma solo para agendar servicios, consultar el estado de tu vehículo y comunicarte con el taller de forma legítima.
+1. Responsable del tratamiento
+Garage 301 es responsable del tratamiento de tus datos personales cuando usas este portal para registrarte, agendar citas y dar seguimiento a tu vehículo.
 
-2. Datos personales
-Tu nombre, correo, teléfono y datos del vehículo se usan exclusivamente para la operación del taller (citas, órdenes, observaciones e inventario). No se venden a terceros.
+2. Datos que recabamos
+Podemos solicitar y almacenar: nombre, usuario, correo electrónico, teléfono, domicilio, placas, marca, modelo, año, color, fotografías del vehículo, historial de citas, órdenes de trabajo, observaciones y cupones asociados a tu cuenta.
 
-3. Citas y horarios
-Las citas están sujetas a disponibilidad. El taller puede confirmar, reagendar o cancelar por causas operativas. Horario laboral: lunes a viernes 9:00–17:00; sábados 9:00–14:00; domingo cerrado.
+3. Finalidad del uso
+Tus datos se usan exclusivamente para:
+• Identificarte como cliente del taller
+• Agendar, confirmar y dar seguimiento a servicios
+• Comunicarte el estado de tu unidad y observaciones técnicas
+• Gestionar inventario, refacciones y cupones de descuento
+• Contactarte por correo o teléfono sobre tu servicio
+• Cumplir obligaciones legales aplicables
 
-4. Vehículos y servicios
-La información de marca, modelo y año que indiques debe ser veraz. Los diagnósticos y presupuestos definitivos se confirman en el taller.
+4. Privacidad y confidencialidad
+No vendemos ni rentamos tus datos a terceros. Solo el personal autorizado del taller puede consultar la información necesaria para atender tu vehículo. Las evidencias fotográficas y notas técnicas se resguardan dentro de la plataforma del taller.
 
-5. Cupones y descuentos
-Los cupones digitales (incluyendo beneficios por afinaciones) son personales, no transferibles y sujetos a vigencia y reglas publicadas por el taller.
+5. Conservación
+Conservamos tus datos mientras mantengas una cuenta activa o exista un historial de servicio vigente. Puedes solicitar la actualización o eliminación de datos personales escribiendo al taller, salvo información que debamos conservar por obligación legal o fiscal.
 
-6. Responsabilidad
-Garage 301 no se hace responsable por uso indebido de la cuenta. Debes custodiar tu usuario y contraseña.
+6. Seguridad de la cuenta
+Eres responsable de custodiar tu usuario y contraseña. Tras intentos fallidos de acceso puede solicitarse recuperación por correo. No compartas códigos de verificación con nadie.
 
-7. Aceptación
-Al marcar la casilla «Acepto términos y condiciones» confirmas haber leído y aceptado estas condiciones para usar el portal.`
+7. Citas, servicios y cupones
+Las citas dependen de disponibilidad. Horario: lunes a viernes 9:00–17:00; sábados 9:00–14:00; domingo cerrado. Diagnósticos y presupuestos finales se confirman en el taller. Los cupones digitales son personales, no transferibles y sujetos a vigencia y reglas del taller.
+
+8. Derechos ARCO
+Puedes solicitar Acceso, Rectificación, Cancelación u Oposición al tratamiento de tus datos personales contactando a Garage 301 a través de los medios publicados por el taller.
+
+9. Aceptación
+Al marcar «Acepto términos y condiciones» en el registro confirmas haber leído este aviso de privacidad y autorizas el tratamiento de tus datos conforme a lo aquí descrito.`
 
 type Props = {
   open: boolean
@@ -49,7 +61,7 @@ export function TermsDialog({ open, onClose }: Props) {
         aria-labelledby="terms-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="terms-title">Términos y condiciones</h2>
+        <h2 id="terms-title">Privacidad y términos</h2>
         <div className="terms-body">{TERMS_TEXT}</div>
         <button className="btn" type="button" onClick={onClose}>
           Entendido
@@ -73,10 +85,11 @@ export function TermsAcceptRow({
       <label className="checkbox-row">
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} required />
         <span>
-          Acepto los{' '}
+          Acepto el{' '}
           <button className="linkish" type="button" onClick={onOpen}>
-            términos y condiciones
-          </button>
+            aviso de privacidad y términos
+          </button>{' '}
+          del taller
         </span>
       </label>
     </div>

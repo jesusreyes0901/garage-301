@@ -637,6 +637,33 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
   color: var(--amber);
   font-weight: 700;
 }
+.coupon-discount {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in srgb, var(--amber) 45%, transparent);
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.coupon-discount-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+.coupon-discount-row.save { color: #3ecf8e; }
+.coupon-discount-row.total {
+  color: var(--text);
+  font-size: 14px;
+  margin-top: 2px;
+}
+.deliver-line {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
 
 @media (max-width: 1100px) {
   .stats, .two, .three, .form-row { grid-template-columns: 1fr; }

@@ -120,6 +120,8 @@ export const seedState = (): AppState => ({
       status: 'en_proceso',
       createdAt: new Date().toISOString(),
       labor: 850,
+      discount: 0,
+      materials: [],
       parts: [
         { partId: 'p1', qty: 1 },
         { partId: 'p2', qty: 2 },
@@ -135,6 +137,8 @@ export const seedState = (): AppState => ({
       status: 'entregada',
       createdAt: new Date().toISOString(),
       labor: 1200,
+      discount: 0,
+      materials: [],
       parts: [{ partId: 'p4', qty: 1 }],
     },
   ],

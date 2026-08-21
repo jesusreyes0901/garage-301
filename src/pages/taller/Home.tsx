@@ -48,7 +48,7 @@ export function TallerHome() {
             <Package size={16} /> Gastos
           </div>
           <div className="value">{formatMoney(gastos)}</div>
-          <div className="hint">Costo de refacciones usadas</div>
+          <div className="hint">Refacciones y materiales de entrega</div>
         </div>
         <div className="card stat">
           <div className="label">

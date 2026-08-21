@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { TicketPercent } from 'lucide-react'
 import { formatDay, formatMoney, useStore } from '../../store'
-import type { Coupon } from '../../types'
+import { couponDiscountBreakdown, type Coupon } from '../../types'
 
 export function countAfinaciones(
   appointments: { clientId: string; service: string; status: string; orderId?: string }[],
@@ -69,7 +69,7 @@ export function ClienteCupones() {
       <div className="page-head">
         <div>
           <h2>Mis cupones</h2>
-          <p>Descuentos digitales del taller. Con 5 o más afinaciones desbloqueas beneficios.</p>
+          <p>Al desbloquear un cupón, el descuento se calcula y muestra aquí mismo.</p>
         </div>
       </div>
       <div className="grid stats" style={{ marginBottom: 16 }}>
@@ -91,20 +91,14 @@ export function ClienteCupones() {
           <p className="empty">Aún no tienes cupones activos. Sigue agendando afinaciones.</p>
         )}
         {visible.map((c) => (
-          <CouponView key={c.id} coupon={c} />
+          <CouponView key={c.id} coupon={c} applied />
         ))}
       </div>
       {locked.length > 0 && (
         <div className="card">
           <h3>Por desbloquear</h3>
           {locked.map((c) => (
-            <div className="coupon-card" key={c.id} style={{ opacity: 0.7 }}>
-              <div className="code">{c.code}</div>
-              <strong>{c.title}</strong>
-              <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>
-                Necesitas {c.minAfinaciones} afinaciones (llevas {afinaciones}).
-              </p>
-            </div>
+            <CouponView key={c.id} coupon={c} applied={false} lockedHint={`Necesitas ${c.minAfinaciones} afinaciones (llevas ${afinaciones}).`} />
           ))}
         </div>
       )}
@@ -112,21 +106,54 @@ export function ClienteCupones() {
   )
 }
 
-function CouponView({ coupon: c }: { coupon: Coupon }) {
+export function CouponView({
+  coupon: c,
+  applied,
+  lockedHint,
+}: {
+  coupon: Coupon
+  applied: boolean
+  lockedHint?: string
+}) {
+  const breakdown = couponDiscountBreakdown(c)
   return (
-    <div className="coupon-card">
+    <div className="coupon-card" style={applied ? undefined : { opacity: 0.75 }}>
       <div className="code">{c.code}</div>
       <strong>{c.title}</strong>
       <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>{c.description}</p>
-      <div style={{ fontSize: 13 }}>
-        {c.discountPercent > 0 && <strong>{c.discountPercent}% de descuento</strong>}
-        {c.discountPercent > 0 && c.discountAmount > 0 && ' · '}
-        {c.discountAmount > 0 && <strong>{formatMoney(c.discountAmount)} de descuento</strong>}
-        <span style={{ color: 'var(--muted)' }}> en {c.serviceType}</span>
-        {c.expiresAt && (
-          <span style={{ color: 'var(--muted)' }}> · vigente hasta {formatDay(c.expiresAt)}</span>
-        )}
-      </div>
+      {lockedHint && <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>{lockedHint}</p>}
+      {applied && (
+        <div className="coupon-discount">
+          <div className="coupon-discount-row">
+            <span>Precio de {c.serviceType}</span>
+            <span>{formatMoney(breakdown.base)}</span>
+          </div>
+          <div className="coupon-discount-row save">
+            <span>
+              Descuento aplicado
+              {c.discountPercent > 0 ? ` (${c.discountPercent}%)` : ''}
+              {c.discountAmount > 0 ? ` + ${formatMoney(c.discountAmount)}` : ''}
+            </span>
+            <span>−{formatMoney(breakdown.discount)}</span>
+          </div>
+          <div className="coupon-discount-row total">
+            <span>Total con cupón</span>
+            <strong>{formatMoney(breakdown.final)}</strong>
+          </div>
+        </div>
+      )}
+      {!applied && (
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+          {c.discountPercent > 0 && <span>{c.discountPercent}% </span>}
+          {c.discountAmount > 0 && <span>{formatMoney(c.discountAmount)} </span>}
+          en {c.serviceType}
+        </div>
+      )}
+      {c.expiresAt && (
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+          Vigente hasta {formatDay(c.expiresAt)}
+        </div>
+      )}
     </div>
   )
 }

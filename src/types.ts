@@ -78,6 +78,17 @@ export interface Coupon {
   expiresAt?: string | null
 }
 
+export interface OrderMaterial {
+  id: string
+  name: string
+  qty: number
+  /** Costo para el taller (gasto) */
+  cost: number
+  /** Precio cobrado al cliente (ingreso), opcional */
+  price: number
+  partId?: string
+}
+
 export interface WorkOrder {
   id: string
   folio: string
@@ -89,6 +100,9 @@ export interface WorkOrder {
   createdAt: string
   labor: number
   parts: { partId: string; qty: number }[]
+  materials: OrderMaterial[]
+  discount: number
+  couponCode?: string
 }
 
 export interface Part {
@@ -142,3 +156,30 @@ export const SERVICES = [
   'Cambio de clutch',
   'Otro',
 ] as const
+
+/** Precio de referencia del servicio para mostrar descuento del cupón */
+export const SERVICE_BASE_PRICES: Record<string, number> = {
+  'Afinación mayor': 1800,
+  'Cambio de aceite': 650,
+  Frenos: 2200,
+  Suspensión: 2800,
+  'Diagnóstico computarizado': 500,
+  'Sistema eléctrico': 900,
+  'Cambio de clutch': 4500,
+  Otro: 800,
+}
+
+export function couponDiscountBreakdown(coupon: {
+  serviceType: string
+  discountPercent: number
+  discountAmount: number
+}) {
+  const base = SERVICE_BASE_PRICES[coupon.serviceType] ?? 1000
+  const fromPercent = Math.round((base * (coupon.discountPercent || 0)) / 100)
+  const discount = Math.min(base, fromPercent + (coupon.discountAmount || 0))
+  return {
+    base,
+    discount,
+    final: Math.max(0, base - discount),
+  }
+}
