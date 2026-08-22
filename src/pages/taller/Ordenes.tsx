@@ -316,10 +316,9 @@ export function TallerOrdenes() {
       {delivering && (
         <div className="modal-backdrop" role="presentation" onClick={() => !busyDeliver && setDelivering(null)}>
           <div
-            className="modal-dialog card"
+            className="modal-dialog card deliver-dialog"
             role="dialog"
             aria-modal="true"
-            style={{ width: 'min(640px, 100%)', maxHeight: '90vh', overflow: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
             <h2>Entregar {delivering.folio}</h2>
@@ -341,8 +340,20 @@ export function TallerOrdenes() {
             <form className="form" onSubmit={onDeliver}>
               {lines.map((line, idx) => (
                 <div key={idx} className="deliver-line">
+                  <div className="deliver-line-head">
+                    <strong>Material {idx + 1}</strong>
+                    {lines.length > 1 && (
+                      <button
+                        className="btn secondary small"
+                        type="button"
+                        onClick={() => setLines((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
                   <label>
-                    Material / refacción
+                    Nombre del material o refacción
                     <input
                       list={`parts-${idx}`}
                       value={line.name}
@@ -372,9 +383,9 @@ export function TallerOrdenes() {
                       ))}
                     </datalist>
                   </label>
-                  <div className="form-row" style={{ gridTemplateColumns: '80px 1fr 1fr' }}>
+                  <div className="deliver-fields">
                     <label>
-                      Cant.
+                      Cantidad
                       <input
                         type="number"
                         min={1}

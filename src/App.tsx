@@ -24,6 +24,7 @@ import { Recuperacion } from './pages/Recuperacion'
 import { Verificar } from './pages/Verificar'
 import { AccesoTaller } from './pages/AccesoTaller'
 import { RegistroTaller } from './pages/RegistroTaller'
+import { ClientAssistant } from './components/ClientAssistant'
 import type { Role } from './types'
 
 function Guard({ role, children }: { role: Role; children: ReactNode }) {
@@ -36,7 +37,8 @@ function Guard({ role, children }: { role: Role; children: ReactNode }) {
 export default function App() {
   const { user } = useStore()
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/login" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Login />} />
       <Route path="/registro" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Registro />} />
       <Route path="/recuperacion" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Recuperacion />} />
@@ -85,6 +87,8 @@ export default function App() {
         <Route path="perfil" element={<Perfil />} />
       </Route>
       <Route path="*" element={<Navigate to={user ? (user.role === 'taller' ? '/taller' : '/cliente') : '/login'} />} />
-    </Routes>
+      </Routes>
+      <ClientAssistant />
+    </>
   )
 }
