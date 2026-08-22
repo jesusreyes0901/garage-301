@@ -129,6 +129,7 @@ interface StoreValue {
   updatePartRequest: (id: string, status: PartRequest['status']) => void
   addOrder: (o: Omit<WorkOrder, 'id' | 'folio' | 'createdAt'>) => void
   updateOrderStatus: (id: string, status: OrderStatus) => void
+  deleteOrder: (id: string) => Promise<string | null>
   deliverOrder: (
     id: string,
     materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
@@ -353,6 +354,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     mutate(`/api/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
   }, [mutate])
 
+  const deleteOrder = useCallback(
+    async (id: string) => {
+      try {
+        const data = await api(`/api/orders/${id}`, { method: 'DELETE' })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo eliminar la orden.'
+      }
+    },
+    [apply],
+  )
+
   const deliverOrder = useCallback(
     async (
       id: string,
@@ -507,6 +522,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePartRequest,
       addOrder,
       updateOrderStatus,
+      deleteOrder,
       deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,
@@ -540,6 +556,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePartRequest,
       addOrder,
       updateOrderStatus,
+      deleteOrder,
       deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,

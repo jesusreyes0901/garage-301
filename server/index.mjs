@@ -1505,6 +1505,58 @@ async function start() {
     res.json({ state: await getState(pool) })
   })
 
+  app.delete('/api/orders/:id', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+      const [rows] = await conn.query('SELECT * FROM work_orders WHERE id=?', [req.params.id])
+      const order = rows[0]
+      if (!order) {
+        await conn.rollback()
+        return res.status(404).json({ error: 'Orden no encontrada.' })
+      }
+      await conn.query('SAVEPOINT before_materials')
+      try {
+        await conn.query('DELETE FROM order_materials WHERE order_id=?', [req.params.id])
+      } catch {
+        await conn.query('ROLLBACK TO before_materials')
+      }
+      await conn.query('DELETE FROM order_parts WHERE order_id=?', [req.params.id])
+      await conn.query('SAVEPOINT before_appt')
+      try {
+        await conn.query(`UPDATE appointments SET status='cancelada', order_id=NULL WHERE order_id=?`, [
+          req.params.id,
+        ])
+      } catch {
+        await conn.query('ROLLBACK TO before_appt')
+        try {
+          await conn.query(`UPDATE appointments SET status='cancelada' WHERE order_id=?`, [req.params.id])
+        } catch {
+          /* citas sin order_id */
+        }
+      }
+      await conn.query('DELETE FROM work_orders WHERE id=?', [req.params.id])
+      if (order.vehicle_id) {
+        const [open] = await conn.query(
+          `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id=? AND status<>'entregada'`,
+          [order.vehicle_id],
+        )
+        if (!open[0].n) {
+          await conn.query('UPDATE vehicles SET status=? WHERE id=?', ['activo', order.vehicle_id])
+        }
+      }
+      await conn.commit()
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      await conn.rollback()
+      console.error('Error al eliminar orden:', err)
+      res.status(500).json({ error: err.message || 'No se pudo eliminar la orden.' })
+    } finally {
+      conn.release()
+    }
+  })
+
   app.post('/api/orders/:id/deliver', auth, async (req, res) => {
     try {
       if (req.user.role !== 'taller') {

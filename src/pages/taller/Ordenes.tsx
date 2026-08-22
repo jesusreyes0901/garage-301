@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
   formatMoney,
@@ -30,7 +31,7 @@ const emptyLine = (): MaterialDraft => ({
 })
 
 export function TallerOrdenes() {
-  const { state, addOrder, updateOrderStatus, deliverOrder } = useStore()
+  const { state, addOrder, updateOrderStatus, deliverOrder, deleteOrder } = useStore()
   const openOrders = state.orders.filter((o) => o.status !== 'entregada')
   const [open, setOpen] = useState(false)
   const [vehicleId, setVehicleId] = useState(state.vehicles[0]?.id ?? '')
@@ -43,6 +44,9 @@ export function TallerOrdenes() {
   const [lines, setLines] = useState<MaterialDraft[]>([emptyLine()])
   const [busyDeliver, setBusyDeliver] = useState(false)
   const [deliverError, setDeliverError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<WorkOrder | null>(null)
+  const [busyDelete, setBusyDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -96,12 +100,28 @@ export function TallerOrdenes() {
     setDelivering(null)
   }
 
+  const onDelete = async () => {
+    if (!removing) return
+    setBusyDelete(true)
+    setDeleteError(null)
+    const err = await deleteOrder(removing.id)
+    setBusyDelete(false)
+    if (err) {
+      setDeleteError(err)
+      return
+    }
+    setRemoving(null)
+  }
+
   return (
     <>
       <div className="page-head">
         <div>
           <h2>Órdenes de trabajo</h2>
-          <p>Al entregar, la orden se cierra y sale de esta lista. Los gastos ajustan la utilidad del resumen.</p>
+          <p>
+            Estados de la reparación: en proceso, espera o entregada. Si se abrió por error o el cliente no
+            sigue, elimina la orden sin marcarla como entregada.
+          </p>
         </div>
         <button className="btn" type="button" onClick={() => setOpen((v) => !v)}>
           {open ? 'Cerrar' : 'Nueva orden'}
@@ -229,6 +249,20 @@ export function TallerOrdenes() {
                     {s.replaceAll('_', ' ')}
                   </button>
                 ))}
+              </div>
+              <div className="order-remove">
+                <p>Si se confundieron o el cliente no quiere continuar la reparación:</p>
+                <button
+                  className="btn danger small"
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null)
+                    setRemoving(o)
+                  }}
+                >
+                  <Trash2 size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                  Eliminar orden
+                </button>
               </div>
             </div>
           )
@@ -375,6 +409,32 @@ export function TallerOrdenes() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {removing && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="card modal-dialog">
+            <h3>Eliminar {removing.folio}</h3>
+            <p style={{ color: 'var(--muted)', margin: 0 }}>
+              Se quita esta orden del sistema. No cuenta como entregada. Úsalo si se abrió por error o el
+              cliente ya no quiere la reparación.
+            </p>
+            {deleteError && <div className="error">{deleteError}</div>}
+            <div className="row-actions">
+              <button className="btn danger" type="button" disabled={busyDelete} onClick={() => void onDelete()}>
+                {busyDelete ? 'Eliminando…' : 'Sí, eliminar'}
+              </button>
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={busyDelete}
+                onClick={() => setRemoving(null)}
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

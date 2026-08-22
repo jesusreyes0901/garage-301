@@ -717,6 +717,22 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
   margin-bottom: 8px;
   border-bottom: 1px solid var(--line);
 }
+.order-remove {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.order-remove p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 320px;
+}
 
 @media (max-width: 1100px) {
   .stats, .two, .three, .form-row { grid-template-columns: 1fr; }
