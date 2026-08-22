@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, Package, TrendingUp, Wallet, Wrench } from 'lucide-react'
+import { CalendarDays, ClipboardList, Package, TrendingUp, Users, Wallet, Wrench } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
@@ -14,6 +14,7 @@ import {
 export function TallerHome() {
   const { state } = useStore()
   const today = new Date().toISOString().slice(0, 10)
+  const clientes = state.users.filter((u) => u.role === 'cliente')
   const citasHoy = state.appointments.filter((a) => a.date === today && a.status !== 'cancelada')
   const enTaller = state.vehicles.filter((v) => v.status === 'en_taller')
   const alertas = state.parts.filter((p) => p.stock <= p.minStock)
@@ -31,10 +32,30 @@ export function TallerHome() {
           <h2>Panel del taller</h2>
           <p>Operación del día: citas, órdenes, inventario y utilidad del taller.</p>
         </div>
-        <Link className="btn" to="/taller/ordenes">
-          Nueva orden
-        </Link>
+        <div className="row-actions">
+          <Link className="btn secondary" to="/taller/clientes">
+            Clientes
+          </Link>
+          <Link className="btn" to="/taller/ordenes">
+            Nueva orden
+          </Link>
+        </div>
       </div>
+      <Link className="card" to="/taller/clientes" style={{ display: 'block', marginBottom: 16 }}>
+        <div className="vehicle-card">
+          <div>
+            <h3 style={{ marginBottom: 6 }}>
+              <Users size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+              Clientes
+            </h3>
+            <p style={{ margin: 0, color: 'var(--muted)' }}>
+              Alta, correo, teléfono, autos y baja del sistema. {clientes.length}{' '}
+              {clientes.length === 1 ? 'cliente registrado' : 'clientes registrados'}.
+            </p>
+          </div>
+          <span className="btn small">Abrir</span>
+        </div>
+      </Link>
       <div className="grid stats">
         <div className="card stat">
           <div className="label">

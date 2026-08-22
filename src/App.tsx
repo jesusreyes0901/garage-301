@@ -8,6 +8,7 @@ import { TallerCitas } from './pages/taller/Citas'
 import { TallerOrdenes } from './pages/taller/Ordenes'
 import { TallerRefacciones } from './pages/taller/Refacciones'
 import { TallerVehiculos } from './pages/taller/Vehiculos'
+import { TallerClientes } from './pages/taller/Clientes'
 import { TallerObservaciones } from './pages/taller/Observaciones'
 import { TallerCupones } from './pages/taller/Cupones'
 import { ClienteHome } from './pages/cliente/Home'
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="refacciones" element={<TallerRefacciones />} />
         <Route path="cupones" element={<TallerCupones />} />
         <Route path="vehiculos" element={<TallerVehiculos />} />
+        <Route path="clientes" element={<TallerClientes />} />
         <Route path="observaciones" element={<TallerObservaciones />} />
         <Route path="perfil" element={<Perfil />} />
       </Route>

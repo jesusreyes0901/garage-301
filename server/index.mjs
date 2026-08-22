@@ -641,6 +641,68 @@ function validPhone(phone) {
   return digits.length >= 8 && digits.length <= 18
 }
 
+function requireTaller(req, res) {
+  if (req.user?.role !== 'taller') {
+    res.status(403).json({ error: 'Solo el personal del taller puede hacer esto.' })
+    return false
+  }
+  return true
+}
+
+async function deleteInList(conn, sql, ids) {
+  if (!ids.length) return
+  const placeholders = ids.map(() => '?').join(',')
+  await conn.query(`${sql} (${placeholders})`, ids)
+}
+
+async function deleteClientCascade(conn, clientId) {
+  const [vehicles] = await conn.query('SELECT id FROM vehicles WHERE owner_id=?', [clientId])
+  const vehicleIds = vehicles.map((v) => v.id)
+  const [orders] = await conn.query('SELECT id FROM work_orders WHERE client_id=?', [clientId])
+  const orderIds = orders.map((o) => o.id)
+
+  await conn.query('SAVEPOINT before_coupons')
+  try {
+    await conn.query('DELETE FROM coupons WHERE client_id=?', [clientId])
+    await conn.query('UPDATE coupons SET created_by=NULL WHERE created_by=?', [clientId])
+  } catch {
+    await conn.query('ROLLBACK TO before_coupons')
+  }
+  await conn.query('DELETE FROM observations WHERE author_id=?', [clientId])
+  await deleteInList(conn, 'DELETE FROM observations WHERE vehicle_id IN', vehicleIds)
+  await conn.query('DELETE FROM part_requests WHERE client_id=?', [clientId])
+  await deleteInList(conn, 'DELETE FROM part_requests WHERE vehicle_id IN', vehicleIds)
+  await conn.query('SAVEPOINT before_appt_order')
+  try {
+    await conn.query('UPDATE appointments SET vehicle_id=NULL, order_id=NULL WHERE client_id=?', [clientId])
+  } catch {
+    await conn.query('ROLLBACK TO before_appt_order')
+    await conn.query('UPDATE appointments SET vehicle_id=NULL WHERE client_id=?', [clientId])
+  }
+  await conn.query('DELETE FROM appointments WHERE client_id=?', [clientId])
+  await conn.query('SAVEPOINT before_materials')
+  try {
+    await deleteInList(conn, 'DELETE FROM order_materials WHERE order_id IN', orderIds)
+  } catch {
+    await conn.query('ROLLBACK TO before_materials')
+  }
+  await deleteInList(conn, 'DELETE FROM order_parts WHERE order_id IN', orderIds)
+  await conn.query('UPDATE work_orders SET vehicle_id=NULL WHERE client_id=?', [clientId])
+  await conn.query('DELETE FROM work_orders WHERE client_id=?', [clientId])
+  await conn.query('DELETE FROM vehicles WHERE owner_id=?', [clientId])
+  const [result] = await conn.query('DELETE FROM users WHERE id=? AND role=?', [clientId, 'cliente'])
+  return result.affectedRows > 0
+}
+
+async function deleteVehicleCascade(conn, vehicleId) {
+  await conn.query('DELETE FROM observations WHERE vehicle_id=?', [vehicleId])
+  await conn.query('DELETE FROM part_requests WHERE vehicle_id=?', [vehicleId])
+  await conn.query('UPDATE appointments SET vehicle_id=NULL WHERE vehicle_id=?', [vehicleId])
+  await conn.query('UPDATE work_orders SET vehicle_id=NULL WHERE vehicle_id=?', [vehicleId])
+  const [result] = await conn.query('DELETE FROM vehicles WHERE id=?', [vehicleId])
+  return result.affectedRows > 0
+}
+
 async function sendGarageEmail(to, subject, message) {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#111;color:#f3f3f3;border-radius:16px">
@@ -1483,29 +1545,276 @@ async function start() {
   })
 
   app.patch('/api/vehicles/:id', auth, async (req, res) => {
-    if (req.body.status) await pool.query('UPDATE vehicles SET status=? WHERE id=?', [req.body.status, req.params.id])
-    if (req.body.photo !== undefined) await pool.query('UPDATE vehicles SET photo=? WHERE id=?', [req.body.photo, req.params.id])
-    res.json({ state: await getState(pool) })
+    try {
+      const [rows] = await pool.query('SELECT * FROM vehicles WHERE id=?', [req.params.id])
+      const vehicle = rows[0]
+      if (!vehicle) return res.status(404).json({ error: 'Vehículo no encontrado.' })
+      if (req.user.role === 'cliente' && vehicle.owner_id !== req.user.id) {
+        return res.status(403).json({ error: 'No autorizado.' })
+      }
+      const updates = []
+      const values = []
+      if (req.body.status) {
+        updates.push('status=?')
+        values.push(req.body.status)
+      }
+      if (req.body.photo !== undefined) {
+        updates.push('photo=?')
+        values.push(req.body.photo)
+      }
+      if (req.user.role === 'taller') {
+        if (req.body.plate !== undefined) {
+          const plate = String(req.body.plate || '').trim().toUpperCase()
+          if (!plate) return res.json({ error: 'La placa es obligatoria.' })
+          const [exists] = await pool.query('SELECT id FROM vehicles WHERE plate=? AND id<>? LIMIT 1', [
+            plate,
+            req.params.id,
+          ])
+          if (exists.length) return res.json({ error: 'Esa placa ya está registrada.' })
+          updates.push('plate=?')
+          values.push(plate)
+        }
+        if (req.body.brand !== undefined) {
+          updates.push('brand=?')
+          values.push(String(req.body.brand || '').trim())
+        }
+        if (req.body.model !== undefined) {
+          updates.push('model=?')
+          values.push(String(req.body.model || '').trim())
+        }
+        if (req.body.year !== undefined) {
+          updates.push('year=?')
+          values.push(Number(req.body.year) || vehicle.year)
+        }
+        if (req.body.color !== undefined) {
+          updates.push('color=?')
+          values.push(String(req.body.color || '').trim())
+        }
+        if (req.body.vin !== undefined) {
+          updates.push('vin=?')
+          values.push(String(req.body.vin || '').trim())
+        }
+        if (req.body.mileage !== undefined) {
+          updates.push('mileage=?')
+          values.push(Math.max(0, Number(req.body.mileage) || 0))
+        }
+        if (req.body.ownerId) {
+          const [owner] = await pool.query('SELECT id FROM users WHERE id=? AND role=? LIMIT 1', [
+            req.body.ownerId,
+            'cliente',
+          ])
+          if (!owner.length) return res.json({ error: 'El dueño del vehículo no existe.' })
+          updates.push('owner_id=?')
+          values.push(req.body.ownerId)
+        }
+      }
+      if (updates.length) {
+        values.push(req.params.id)
+        await pool.query(`UPDATE vehicles SET ${updates.join(', ')} WHERE id=?`, values)
+      }
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al actualizar vehículo:', err)
+      res.status(500).json({ error: err.message || 'No se pudo actualizar el vehículo.' })
+    }
   })
 
   app.post('/api/vehicles', auth, async (req, res) => {
-    await pool.query(
-      'INSERT INTO vehicles (id,plate,brand,model,year,color,vin,owner_id,mileage,status,photo) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-      [
-        uid('v'),
-        String(req.body.plate || '').trim().toUpperCase(),
-        req.body.brand,
-        req.body.model,
-        req.body.year,
-        req.body.color || '',
-        req.body.vin || '',
-        req.body.ownerId,
-        req.body.mileage || 0,
-        req.body.status || 'activo',
-        req.body.photo || '',
-      ],
-    )
-    res.json({ state: await getState(pool) })
+    try {
+      const ownerId = req.user.role === 'cliente' ? req.user.id : String(req.body.ownerId || '').trim()
+      if (!ownerId) return res.json({ error: 'Indica el cliente dueño del vehículo.' })
+      if (req.user.role === 'taller') {
+        const [owner] = await pool.query('SELECT id FROM users WHERE id=? AND role=? LIMIT 1', [ownerId, 'cliente'])
+        if (!owner.length) return res.json({ error: 'El cliente no existe.' })
+      }
+      const plate = String(req.body.plate || '').trim().toUpperCase()
+      if (!plate) return res.json({ error: 'La placa es obligatoria.' })
+      const brand = String(req.body.brand || '').trim()
+      const model = String(req.body.model || '').trim()
+      if (!brand || !model) return res.json({ error: 'Indica marca y modelo del vehículo.' })
+      const [exists] = await pool.query('SELECT id FROM vehicles WHERE plate=? LIMIT 1', [plate])
+      if (exists.length) return res.json({ error: 'Esa placa ya está registrada.' })
+      await pool.query(
+        'INSERT INTO vehicles (id,plate,brand,model,year,color,vin,owner_id,mileage,status,photo) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [
+          uid('v'),
+          plate,
+          brand,
+          model,
+          Number(req.body.year) || new Date().getFullYear(),
+          String(req.body.color || '').trim() || 'Sin especificar',
+          String(req.body.vin || '').trim(),
+          ownerId,
+          Math.max(0, Number(req.body.mileage) || 0),
+          req.body.status || 'activo',
+          req.body.photo || '',
+        ],
+      )
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al dar de alta el vehículo:', err)
+      res.status(500).json({ error: err.message || 'No se pudo registrar el vehículo.' })
+    }
+  })
+
+  app.delete('/api/vehicles/:id', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+      const [rows] = await conn.query('SELECT id FROM vehicles WHERE id=?', [req.params.id])
+      if (!rows.length) {
+        await conn.rollback()
+        return res.status(404).json({ error: 'Vehículo no encontrado.' })
+      }
+      await deleteVehicleCascade(conn, req.params.id)
+      await conn.commit()
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      await conn.rollback()
+      console.error('Error al eliminar vehículo:', err)
+      res.status(500).json({ error: err.message || 'No se pudo eliminar el vehículo.' })
+    } finally {
+      conn.release()
+    }
+  })
+
+  app.post('/api/clients', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    try {
+      const name = String(req.body.name || '').trim()
+      const username = String(req.body.username || '').trim().toLowerCase()
+      const email = String(req.body.email || '').trim().toLowerCase()
+      const phone = String(req.body.phone || '').trim()
+      const address = String(req.body.address || '').trim()
+      const password = String(req.body.password || '')
+      if (!name) return res.json({ error: 'El nombre es obligatorio.' })
+      if (username.length < 3) return res.json({ error: 'El usuario debe tener al menos 3 caracteres.' })
+      if (!/^[a-z0-9._-]+$/.test(username)) return res.json({ error: 'Usuario inválido.' })
+      if (!validEmail(email)) return res.json({ error: 'Escribe un correo válido, por ejemplo  nombre@gmail.com' })
+      if (!validPhone(phone)) return res.json({ error: 'El teléfono debe incluir lada de país y número local.' })
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        return res.json({ error: 'La contraseña debe tener al menos 8 caracteres, con letras y números.' })
+      }
+      const [taken] = await pool.query('SELECT id FROM users WHERE username=? OR email=? LIMIT 1', [username, email])
+      if (taken.length) return res.json({ error: 'Ese usuario o correo ya está registrado.' })
+      const vehicle = req.body.vehicle
+      let plate = ''
+      if (vehicle?.plate) {
+        plate = String(vehicle.plate).trim().toUpperCase()
+        const [exists] = await pool.query('SELECT id FROM vehicles WHERE plate=?', [plate])
+        if (exists.length) return res.json({ error: 'Esa placa ya está registrada.' })
+      }
+      const id = uid('u')
+      const hash = await bcrypt.hash(password, 10)
+      await pool.query(
+        'INSERT INTO users (id,name,username,email,password,role,phone,address,avatar,email_verified) VALUES (?,?,?,?,?,?,?,?,?,1)',
+        [id, name, username, email, hash, 'cliente', phone, address, ''],
+      )
+      if (plate) {
+        await pool.query(
+          'INSERT INTO vehicles (id,plate,brand,model,year,color,vin,owner_id,mileage,status,photo) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [
+            uid('v'),
+            plate,
+            String(vehicle.brand || '').trim(),
+            String(vehicle.model || '').trim(),
+            Number(vehicle.year) || new Date().getFullYear(),
+            String(vehicle.color || '').trim() || 'Sin especificar',
+            String(vehicle.vin || '').trim(),
+            id,
+            Math.max(0, Number(vehicle.mileage) || 0),
+            'activo',
+            vehicle.photo || '',
+          ],
+        )
+      }
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al crear cliente:', err)
+      res.status(500).json({ error: err.message || 'No se pudo crear el cliente.' })
+    }
+  })
+
+  app.patch('/api/clients/:id', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    try {
+      const [rows] = await pool.query('SELECT * FROM users WHERE id=? AND role=? LIMIT 1', [req.params.id, 'cliente'])
+      const client = rows[0]
+      if (!client) return res.status(404).json({ error: 'Cliente no encontrado.' })
+      const name = String(req.body.name || '').trim()
+      const username = String(req.body.username || '').trim().toLowerCase()
+      const email = String(req.body.email || '').trim().toLowerCase()
+      const phone = String(req.body.phone || '').trim()
+      const address = String(req.body.address ?? client.address ?? '').trim()
+      if (!name) return res.json({ error: 'El nombre es obligatorio.' })
+      if (username.length < 3) return res.json({ error: 'El usuario debe tener al menos 3 caracteres.' })
+      if (!/^[a-z0-9._-]+$/.test(username)) {
+        return res.json({ error: 'El usuario solo puede tener letras, números, punto, guion o guion bajo.' })
+      }
+      if (!validEmail(email)) return res.json({ error: 'Escribe un correo válido, por ejemplo  nombre@gmail.com' })
+      if (!validPhone(phone)) return res.json({ error: 'El teléfono debe incluir lada de país y número local.' })
+      if (username !== client.username) {
+        const [takenUser] = await pool.query('SELECT id FROM users WHERE username=? AND id<>? LIMIT 1', [
+          username,
+          client.id,
+        ])
+        if (takenUser.length) return res.json({ error: 'Ese usuario ya está en uso.' })
+      }
+      if (email !== client.email) {
+        const [takenEmail] = await pool.query('SELECT id FROM users WHERE email=? AND id<>? LIMIT 1', [
+          email,
+          client.id,
+        ])
+        if (takenEmail.length) return res.json({ error: 'Ese correo ya está en uso.' })
+      }
+      const fields = [name, username, email, phone, address, client.id]
+      if (req.body.password) {
+        const np = String(req.body.password)
+        if (np.length < 8 || !/[A-Za-z]/.test(np) || !/\d/.test(np)) {
+          return res.json({ error: 'La contraseña debe tener al menos 8 caracteres, con letras y números.' })
+        }
+        const hash = await bcrypt.hash(np, 10)
+        await pool.query(
+          'UPDATE users SET name=?, username=?, email=?, phone=?, address=?, password=? WHERE id=?',
+          [...fields.slice(0, 5), hash, client.id],
+        )
+      } else {
+        await pool.query('UPDATE users SET name=?, username=?, email=?, phone=?, address=? WHERE id=?', fields)
+      }
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      console.error('Error al actualizar cliente:', err)
+      res.status(500).json({ error: err.message || 'No se pudo actualizar el cliente.' })
+    }
+  })
+
+  app.delete('/api/clients/:id', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    if (req.params.id === req.user.id) {
+      return res.json({ error: 'No puedes eliminar tu propia cuenta desde aquí.' })
+    }
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+      const [rows] = await conn.query('SELECT id FROM users WHERE id=? AND role=? LIMIT 1', [
+        req.params.id,
+        'cliente',
+      ])
+      if (!rows.length) {
+        await conn.rollback()
+        return res.status(404).json({ error: 'Cliente no encontrado.' })
+      }
+      await deleteClientCascade(conn, req.params.id)
+      await conn.commit()
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      await conn.rollback()
+      console.error('Error al eliminar cliente:', err)
+      res.status(500).json({ error: err.message || 'No se pudo sacar al cliente del sistema.' })
+    } finally {
+      conn.release()
+    }
   })
 
   app.post('/api/parts', auth, async (req, res) => {

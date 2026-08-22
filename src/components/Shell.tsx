@@ -9,6 +9,7 @@ import {
   Search,
   TicketPercent,
   UserRound,
+  Users,
   Wrench,
 } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
@@ -17,6 +18,7 @@ import { useStore } from '../store'
 
 const tallerNav = [
   { to: '/taller', label: 'Resumen', icon: LayoutDashboard, end: true },
+  { to: '/taller/clientes', label: 'Clientes', icon: Users },
   { to: '/taller/citas', label: 'Citas', icon: CalendarDays },
   { to: '/taller/ordenes', label: 'Órdenes', icon: ClipboardList },
   { to: '/taller/refacciones', label: 'Refacciones', icon: Package },
@@ -65,18 +67,20 @@ export function Shell() {
             </>
           )}
         </div>
-        <div className="nav-label">Menú</div>
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-          >
-            <item.icon size={18} />
-            {item.label}
-          </NavLink>
-        ))}
+        <div className="sidebar-nav">
+          <div className="nav-label">Menú</div>
+          {nav.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+            >
+              <item.icon size={18} />
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
         <div className="sidebar-user">
           <div className="sidebar-user-row">
             {user?.avatar ? (

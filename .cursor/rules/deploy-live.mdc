@@ -1,0 +1,10 @@
+---
+description: Subir cada cambio a GitHub para que Render lo publique en línea
+alwaysApply: true
+---
+
+# Publicar en línea
+
+Después de completar lo que pida el usuario, haz commit en `main` y `git push origin main` al repo `garage-301` para que Render actualice la página en vivo.
+
+No dejes los cambios solo en local. Incluye archivos nuevos y los de servidor/frontend que hagan falta para que funcione en Render.

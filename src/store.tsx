@@ -68,6 +68,28 @@ export type ProfilePatch = {
   newPassword: string
 }
 
+export type ClientInput = {
+  id?: string
+  name: string
+  username: string
+  email: string
+  phone: string
+  address?: string
+  password?: string
+  vehicle?: {
+    plate: string
+    brand: string
+    model: string
+    year: number
+    color: string
+    photo?: string
+    vin?: string
+    mileage?: number
+  }
+}
+
+export type VehicleInput = Omit<Vehicle, 'id'> & { id?: string }
+
 export type RegisterInput = {
   name: string
   username: string
@@ -116,6 +138,10 @@ interface StoreValue {
   adjustStock: (partId: string, delta: number) => string | null
   addPart: (p: { name: string; category?: string; price: number; cost: number; stock: number }) => void
   addVehicle: (v: Omit<Vehicle, 'id'>) => void
+  saveVehicle: (v: VehicleInput) => Promise<string | null>
+  deleteVehicle: (id: string) => Promise<string | null>
+  saveClient: (input: ClientInput) => Promise<string | null>
+  deleteClient: (id: string) => Promise<string | null>
   saveCoupon: (
     input: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'> & { id?: string },
   ) => Promise<string | null>
@@ -377,6 +403,66 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     mutate('/api/vehicles', { method: 'POST', body: JSON.stringify(v) })
   }, [mutate])
 
+  const saveVehicle = useCallback(
+    async (v: VehicleInput) => {
+      try {
+        const path = v.id ? `/api/vehicles/${v.id}` : '/api/vehicles'
+        const method = v.id ? 'PATCH' : 'POST'
+        const data = await api(path, { method, body: JSON.stringify(v) })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo guardar el vehículo.'
+      }
+    },
+    [apply],
+  )
+
+  const deleteVehicle = useCallback(
+    async (id: string) => {
+      try {
+        const data = await api(`/api/vehicles/${id}`, { method: 'DELETE' })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo quitar el vehículo.'
+      }
+    },
+    [apply],
+  )
+
+  const saveClient = useCallback(
+    async (input: ClientInput) => {
+      try {
+        const path = input.id ? `/api/clients/${input.id}` : '/api/clients'
+        const method = input.id ? 'PATCH' : 'POST'
+        const data = await api(path, { method, body: JSON.stringify(input) })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo guardar el cliente.'
+      }
+    },
+    [apply],
+  )
+
+  const deleteClient = useCallback(
+    async (id: string) => {
+      try {
+        const data = await api(`/api/clients/${id}`, { method: 'DELETE' })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo sacar al cliente del sistema.'
+      }
+    },
+    [apply],
+  )
+
   const saveCoupon = useCallback(
     async (input: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'> & { id?: string }) => {
       try {
@@ -427,6 +513,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adjustStock,
       addPart,
       addVehicle,
+      saveVehicle,
+      deleteVehicle,
+      saveClient,
+      deleteClient,
       saveCoupon,
       deleteCoupon,
     }),
@@ -456,6 +546,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       adjustStock,
       addPart,
       addVehicle,
+      saveVehicle,
+      deleteVehicle,
+      saveClient,
+      deleteClient,
       saveCoupon,
       deleteCoupon,
     ],
