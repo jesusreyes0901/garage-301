@@ -123,6 +123,7 @@ interface StoreValue {
   ) => Promise<string | null>
   updateAppointmentStatus: (id: string, status: Appointment['status']) => void
   deleteAppointment: (id: string) => void
+  deleteAppointments: (ids: string[]) => Promise<string | null>
   confirmAppointment: (id: string) => void
   addObservation: (vehicleId: string, text: string, photos?: string[]) => void
   addPartRequest: (vehicleId: string, partId: string, qty: number) => void
@@ -130,6 +131,7 @@ interface StoreValue {
   addOrder: (o: Omit<WorkOrder, 'id' | 'folio' | 'createdAt'>) => void
   updateOrderStatus: (id: string, status: OrderStatus) => void
   deleteOrder: (id: string) => Promise<string | null>
+  deleteOrders: (ids: string[]) => Promise<string | null>
   deliverOrder: (
     id: string,
     materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
@@ -324,6 +326,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     mutate(`/api/appointments/${id}`, { method: 'DELETE' })
   }, [mutate])
 
+  const deleteAppointments = useCallback(
+    async (ids: string[]) => {
+      try {
+        const data = await api('/api/appointments/bulk-delete', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudieron eliminar las citas.'
+      }
+    },
+    [apply],
+  )
+
   const confirmAppointment = useCallback((id: string) => {
     mutate(`/api/appointments/${id}/confirm`, { method: 'POST' })
   }, [mutate])
@@ -363,6 +382,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return null
       } catch (err) {
         return err instanceof Error ? err.message : 'No se pudo eliminar la orden.'
+      }
+    },
+    [apply],
+  )
+
+  const deleteOrders = useCallback(
+    async (ids: string[]) => {
+      try {
+        const data = await api('/api/orders/bulk-delete', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudieron eliminar las órdenes.'
       }
     },
     [apply],
@@ -516,6 +552,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addAppointment,
       updateAppointmentStatus,
       deleteAppointment,
+      deleteAppointments,
       confirmAppointment,
       addObservation,
       addPartRequest,
@@ -523,6 +560,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addOrder,
       updateOrderStatus,
       deleteOrder,
+      deleteOrders,
       deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,
@@ -550,6 +588,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addAppointment,
       updateAppointmentStatus,
       deleteAppointment,
+      deleteAppointments,
       confirmAppointment,
       addObservation,
       addPartRequest,
@@ -557,6 +596,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addOrder,
       updateOrderStatus,
       deleteOrder,
+      deleteOrders,
       deliverOrder,
       updateVehicleStatus,
       setVehiclePhoto,

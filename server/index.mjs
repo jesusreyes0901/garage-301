@@ -694,6 +694,41 @@ async function deleteClientCascade(conn, clientId) {
   return result.affectedRows > 0
 }
 
+async function deleteOrderCascade(conn, orderId) {
+  const [rows] = await conn.query('SELECT * FROM work_orders WHERE id=?', [orderId])
+  const order = rows[0]
+  if (!order) return false
+  await conn.query('SAVEPOINT before_order_materials')
+  try {
+    await conn.query('DELETE FROM order_materials WHERE order_id=?', [orderId])
+  } catch {
+    await conn.query('ROLLBACK TO before_order_materials')
+  }
+  await conn.query('DELETE FROM order_parts WHERE order_id=?', [orderId])
+  await conn.query('SAVEPOINT before_order_appt')
+  try {
+    await conn.query(`UPDATE appointments SET status='cancelada', order_id=NULL WHERE order_id=?`, [orderId])
+  } catch {
+    await conn.query('ROLLBACK TO before_order_appt')
+    try {
+      await conn.query(`UPDATE appointments SET status='cancelada' WHERE order_id=?`, [orderId])
+    } catch {
+      /* citas sin order_id */
+    }
+  }
+  await conn.query('DELETE FROM work_orders WHERE id=?', [orderId])
+  if (order.vehicle_id) {
+    const [open] = await conn.query(
+      `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id=? AND status<>'entregada'`,
+      [order.vehicle_id],
+    )
+    if (!open[0].n) {
+      await conn.query('UPDATE vehicles SET status=? WHERE id=?', ['activo', order.vehicle_id])
+    }
+  }
+  return true
+}
+
 async function deleteVehicleCascade(conn, vehicleId) {
   await conn.query('DELETE FROM observations WHERE vehicle_id=?', [vehicleId])
   await conn.query('DELETE FROM part_requests WHERE vehicle_id=?', [vehicleId])
@@ -1406,6 +1441,15 @@ async function start() {
     res.json({ state: await getState(pool) })
   })
 
+  app.post('/api/appointments/bulk-delete', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : []).map((id) => String(id || '').trim()).filter(Boolean))]
+    if (!ids.length) return res.json({ error: 'Elige al menos una cita.' })
+    const placeholders = ids.map(() => '?').join(',')
+    await pool.query(`DELETE FROM appointments WHERE id IN (${placeholders})`, ids)
+    res.json({ state: await getState(pool) })
+  })
+
   app.post('/api/appointments/:id/confirm', auth, async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM appointments WHERE id=?', [req.params.id])
     const cita = rows[0]
@@ -1510,41 +1554,10 @@ async function start() {
     const conn = await pool.getConnection()
     try {
       await conn.beginTransaction()
-      const [rows] = await conn.query('SELECT * FROM work_orders WHERE id=?', [req.params.id])
-      const order = rows[0]
-      if (!order) {
+      const ok = await deleteOrderCascade(conn, req.params.id)
+      if (!ok) {
         await conn.rollback()
         return res.status(404).json({ error: 'Orden no encontrada.' })
-      }
-      await conn.query('SAVEPOINT before_materials')
-      try {
-        await conn.query('DELETE FROM order_materials WHERE order_id=?', [req.params.id])
-      } catch {
-        await conn.query('ROLLBACK TO before_materials')
-      }
-      await conn.query('DELETE FROM order_parts WHERE order_id=?', [req.params.id])
-      await conn.query('SAVEPOINT before_appt')
-      try {
-        await conn.query(`UPDATE appointments SET status='cancelada', order_id=NULL WHERE order_id=?`, [
-          req.params.id,
-        ])
-      } catch {
-        await conn.query('ROLLBACK TO before_appt')
-        try {
-          await conn.query(`UPDATE appointments SET status='cancelada' WHERE order_id=?`, [req.params.id])
-        } catch {
-          /* citas sin order_id */
-        }
-      }
-      await conn.query('DELETE FROM work_orders WHERE id=?', [req.params.id])
-      if (order.vehicle_id) {
-        const [open] = await conn.query(
-          `SELECT COUNT(*) AS n FROM work_orders WHERE vehicle_id=? AND status<>'entregada'`,
-          [order.vehicle_id],
-        )
-        if (!open[0].n) {
-          await conn.query('UPDATE vehicles SET status=? WHERE id=?', ['activo', order.vehicle_id])
-        }
       }
       await conn.commit()
       res.json({ state: await getState(pool) })
@@ -1552,6 +1565,25 @@ async function start() {
       await conn.rollback()
       console.error('Error al eliminar orden:', err)
       res.status(500).json({ error: err.message || 'No se pudo eliminar la orden.' })
+    } finally {
+      conn.release()
+    }
+  })
+
+  app.post('/api/orders/bulk-delete', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : []).map((id) => String(id || '').trim()).filter(Boolean))]
+    if (!ids.length) return res.json({ error: 'Elige al menos una orden.' })
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+      for (const id of ids) await deleteOrderCascade(conn, id)
+      await conn.commit()
+      res.json({ state: await getState(pool) })
+    } catch (err) {
+      await conn.rollback()
+      console.error('Error al eliminar órdenes:', err)
+      res.status(500).json({ error: err.message || 'No se pudieron eliminar las órdenes.' })
     } finally {
       conn.release()
     }

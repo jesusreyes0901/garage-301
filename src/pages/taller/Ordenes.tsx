@@ -31,7 +31,7 @@ const emptyLine = (): MaterialDraft => ({
 })
 
 export function TallerOrdenes() {
-  const { state, addOrder, updateOrderStatus, deliverOrder, deleteOrder } = useStore()
+  const { state, addOrder, updateOrderStatus, deliverOrder, deleteOrders } = useStore()
   const openOrders = state.orders.filter((o) => o.status !== 'entregada')
   const [open, setOpen] = useState(false)
   const [vehicleId, setVehicleId] = useState(state.vehicles[0]?.id ?? '')
@@ -44,7 +44,8 @@ export function TallerOrdenes() {
   const [lines, setLines] = useState<MaterialDraft[]>([emptyLine()])
   const [busyDeliver, setBusyDeliver] = useState(false)
   const [deliverError, setDeliverError] = useState<string | null>(null)
-  const [removing, setRemoving] = useState<WorkOrder | null>(null)
+  const [removing, setRemoving] = useState<string[] | null>(null)
+  const [selected, setSelected] = useState<string[]>([])
   const [busyDelete, setBusyDelete] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
@@ -101,17 +102,24 @@ export function TallerOrdenes() {
   }
 
   const onDelete = async () => {
-    if (!removing) return
+    if (!removing?.length) return
     setBusyDelete(true)
     setDeleteError(null)
-    const err = await deleteOrder(removing.id)
+    const err = await deleteOrders(removing)
     setBusyDelete(false)
     if (err) {
       setDeleteError(err)
       return
     }
+    setSelected((prev) => prev.filter((id) => !removing.includes(id)))
     setRemoving(null)
   }
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const allSelected = openOrders.length > 0 && openOrders.every((o) => selected.includes(o.id))
 
   return (
     <>
@@ -119,14 +127,42 @@ export function TallerOrdenes() {
         <div>
           <h2>Órdenes de trabajo</h2>
           <p>
-            Estados de la reparación: en proceso, espera o entregada. Si se abrió por error o el cliente no
-            sigue, elimina la orden sin marcarla como entregada.
+            Estados de la reparación: en proceso, espera o entregada. Marca varias órdenes para
+            eliminarlas juntas si se abrieron por error o el cliente no sigue.
           </p>
         </div>
         <button className="btn" type="button" onClick={() => setOpen((v) => !v)}>
           {open ? 'Cerrar' : 'Nueva orden'}
         </button>
       </div>
+      {openOrders.length > 0 && (
+        <div className="bulk-bar card">
+          <label className="checkbox-row" style={{ margin: 0 }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => setSelected(allSelected ? [] : openOrders.map((o) => o.id))}
+            />
+            <span>
+              {selected.length > 0
+                ? `${selected.length} orden${selected.length === 1 ? '' : 'es'} seleccionada${selected.length === 1 ? '' : 's'}`
+                : 'Seleccionar varias órdenes'}
+            </span>
+          </label>
+          <button
+            className="btn danger small"
+            type="button"
+            disabled={selected.length === 0}
+            onClick={() => {
+              setDeleteError(null)
+              setRemoving([...selected])
+            }}
+          >
+            <Trash2 size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Eliminar seleccionadas
+          </button>
+        </div>
+      )}
       {open && (
         <div className="card" style={{ marginBottom: 16 }}>
           <form className="form" onSubmit={onSubmit}>
@@ -195,6 +231,14 @@ export function TallerOrdenes() {
           const gasto = orderExpense(o, state.parts)
           return (
             <div className="card" key={o.id}>
+              <label className="checkbox-row" style={{ marginBottom: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(o.id)}
+                  onChange={() => toggleSelected(o.id)}
+                />
+                <span>Seleccionar esta orden</span>
+              </label>
               <div className="vehicle-card">
                 <div>
                   <div className="plate">{o.folio}</div>
@@ -257,7 +301,7 @@ export function TallerOrdenes() {
                   type="button"
                   onClick={() => {
                     setDeleteError(null)
-                    setRemoving(o)
+                    setRemoving([o.id])
                   }}
                 >
                   <Trash2 size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
@@ -416,10 +460,11 @@ export function TallerOrdenes() {
       {removing && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="card modal-dialog">
-            <h3>Eliminar {removing.folio}</h3>
+            <h3>
+              {removing.length === 1 ? 'Eliminar orden' : `Eliminar ${removing.length} órdenes`}
+            </h3>
             <p style={{ color: 'var(--muted)', margin: 0 }}>
-              Se quita esta orden del sistema. No cuenta como entregada. Úsalo si se abrió por error o el
-              cliente ya no quiere la reparación.
+              Se quitan del sistema y no cuentan como entregadas. Las citas ligadas se cancelan.
             </p>
             {deleteError && <div className="error">{deleteError}</div>}
             <div className="row-actions">
