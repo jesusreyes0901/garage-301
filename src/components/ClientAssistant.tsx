@@ -26,6 +26,7 @@ const PANEL_MENU: Option[] = [
   { label: 'Refacciones', next: 'refacciones', to: '/cliente/refacciones' },
   { label: 'Observaciones', next: 'observaciones', to: '/cliente/observaciones' },
   { label: 'Buscar vehículo', next: 'vehiculo', to: '/cliente/vehiculo' },
+  { label: 'Ubicación del taller', next: 'ubicacion', to: '/cliente/ubicacion' },
   { label: 'Editar perfil', next: 'perfil', to: '/cliente/perfil' },
 ]
 
@@ -143,7 +144,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'agendar-confirmar': {
     title: 'Confirmar la cita',
-    say: 'Revisa día, hora, servicio y auto. Pulsa el botón para agendar. Te manda a Mis citas. Queda en Pendiente hasta que el taller la confirme y cree la orden.',
+    say: 'Revisa día, hora, servicio y auto. Pulsa el botón para agendar. Se abre WhatsApp con la confirmación y, una hora antes, te llega otro aviso. Luego te manda a Mis citas. Queda en Pendiente hasta que el taller la confirme.',
     options: [
       { label: 'Ir a mis citas', next: 'citas', to: '/cliente/citas' },
       { label: 'Volver a agendar', next: 'agendar', to: '/cliente/agendar' },
@@ -364,6 +365,15 @@ const TOPICS: Record<string, Topic> = {
       backPanel,
     ],
   },
+  ubicacion: {
+    title: 'Ubicación del taller',
+    say: 'En Ubicación ves la dirección y el mapa de Garage 301. Usa Cómo llegar para abrir Google Maps. Si el taller publicó WhatsApp, también puedes escribirle desde ahí.',
+    options: [
+      { label: 'Ir a ubicación', to: '/cliente/ubicacion' },
+      { label: 'Agendar una cita', next: 'agendar', to: '/cliente/agendar' },
+      backPanel,
+    ],
+  },
   perfil: {
     title: 'Editar perfil',
     say: 'Aquí cambias tus datos de cuenta. Elige si quieres foto, correo y teléfono, o una contraseña nueva.',
@@ -385,7 +395,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'perfil-contacto': {
     title: 'Correo y teléfono',
-    say: 'Puedes cambiar nombre, usuario, correo, teléfono con lada y dirección. El correo y el usuario no deben estar usados por otra cuenta. Pulsa Guardar cambios para que queden en el sistema.',
+    say: 'Puedes cambiar nombre, usuario, correo, teléfono con lada y dirección. El teléfono sirve para el WhatsApp de confirmación de cita y el aviso una hora antes. Pulsa Guardar cambios para que queden en el sistema.',
     options: [
       { label: 'Cambiar contraseña', next: 'perfil-clave' },
       { label: 'Ir a editar perfil', to: '/cliente/perfil' },
@@ -418,6 +428,7 @@ function sectionForPath(path: string, loggedIn: boolean): string {
   if (path.startsWith('/cliente/refacciones')) return 'refacciones'
   if (path.startsWith('/cliente/observaciones')) return 'observaciones'
   if (path.startsWith('/cliente/vehiculo')) return 'vehiculo'
+  if (path.startsWith('/cliente/ubicacion')) return 'ubicacion'
   if (path.startsWith('/cliente/perfil')) return 'perfil'
   if (path.startsWith('/cliente')) return 'panel'
   return 'panel'

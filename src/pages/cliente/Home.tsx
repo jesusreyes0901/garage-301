@@ -1,4 +1,4 @@
-import { CalendarPlus, MessageSquare, Package, Search, TicketPercent } from 'lucide-react'
+import { CalendarPlus, MapPin, MessageSquare, Package, Search, TicketPercent } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
 import { formatDay, useStore, vehicleById } from '../../store'
@@ -115,6 +115,9 @@ export function ClienteHome() {
             </Link>
             <Link className="btn secondary" to="/cliente/agendar">
               <CalendarPlus size={16} style={{ verticalAlign: 'middle' }} /> Agendar
+            </Link>
+            <Link className="btn secondary" to="/cliente/ubicacion">
+              <MapPin size={16} style={{ verticalAlign: 'middle' }} /> Ubicación
             </Link>
           </div>
         </div>

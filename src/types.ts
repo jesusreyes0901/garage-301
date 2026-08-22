@@ -139,6 +139,28 @@ export interface Observation {
   createdAt: string
 }
 
+export interface ShopSettings {
+  name: string
+  address: string
+  mapsUrl: string
+  lat: string
+  lng: string
+  notes: string
+  whatsapp: string
+}
+
+export function emptyShop(): ShopSettings {
+  return {
+    name: 'Garage 301',
+    address: '',
+    mapsUrl: '',
+    lat: '',
+    lng: '',
+    notes: '',
+    whatsapp: '',
+  }
+}
+
 export interface AppState {
   users: User[]
   vehicles: Vehicle[]
@@ -148,6 +170,7 @@ export interface AppState {
   partRequests: PartRequest[]
   observations: Observation[]
   coupons: Coupon[]
+  shop: ShopSettings
 }
 
 export const SERVICES = [

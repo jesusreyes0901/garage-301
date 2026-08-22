@@ -112,6 +112,7 @@ export function ClienteAgendar() {
       activeCoupon && breakdown
         ? `Cupón ${activeCoupon.code}: ${formatMoney(breakdown.base)} → ${formatMoney(breakdown.final)} (−${formatMoney(breakdown.discount)})`
         : ''
+    const waWin = window.open('', '_blank')
     const result = await addAppointment({
       clientId: user.id,
       vehicleId: '',
@@ -126,9 +127,16 @@ export function ClienteAgendar() {
       discount: breakdown?.discount || 0,
     })
     setBusy(false)
-    if (result) {
-      setError(result)
+    if (result.error) {
+      waWin?.close()
+      setError(result.error)
       return
+    }
+    if (!result.whatsappSent && result.whatsappUrl) {
+      if (waWin) waWin.location.href = result.whatsappUrl
+      else window.open(result.whatsappUrl, '_blank')
+    } else {
+      waWin?.close()
     }
     navigate('/cliente/citas')
   }
@@ -141,7 +149,8 @@ export function ClienteAgendar() {
           <p>
             {activeCoupon
               ? `Cupón ${activeCoupon.code} aplicado. Un auto por horario.`
-              : 'Un auto por horario. Sábados 9:00–14:00 · Lun–Vie 9:00–17:00.'}
+              : 'Un auto por horario. Sábados 9:00–14:00 · Lun–Vie 9:00–17:00.'}{' '}
+            Al confirmar te llega WhatsApp de la cita y otro aviso 1 hora antes. Revisa que tu teléfono esté en Editar perfil.
           </p>
         </div>
       </div>
@@ -288,6 +297,9 @@ export function ClienteAgendar() {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
           {error && <div className="error">{error}</div>}
+          {!user?.phone && (
+            <div className="error">Agrega tu teléfono en Editar perfil para recibir el WhatsApp de la cita.</div>
+          )}
           <button className="btn" type="submit" disabled={busy || !time}>
             {busy ? 'Agendando…' : activeCoupon ? 'Confirmar cita con descuento' : 'Confirmar solicitud'}
           </button>

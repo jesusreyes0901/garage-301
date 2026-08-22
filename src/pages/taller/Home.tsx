@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, Package, TrendingUp, Users, Wallet, Wrench } from 'lucide-react'
+import { CalendarDays, ClipboardList, MapPin, Package, TrendingUp, Users, Wallet, Wrench } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
@@ -33,6 +33,9 @@ export function TallerHome() {
           <p>Operación del día: citas, órdenes, inventario y utilidad del taller.</p>
         </div>
         <div className="row-actions">
+          <Link className="btn secondary" to="/taller/ubicacion">
+            Ubicación
+          </Link>
           <Link className="btn secondary" to="/taller/clientes">
             Clientes
           </Link>
@@ -54,6 +57,22 @@ export function TallerHome() {
             </p>
           </div>
           <span className="btn small">Abrir</span>
+        </div>
+      </Link>
+      <Link className="card" to="/taller/ubicacion" style={{ display: 'block', marginBottom: 16 }}>
+        <div className="vehicle-card">
+          <div>
+            <h3 style={{ marginBottom: 6 }}>
+              <MapPin size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+              Ubicación del taller
+            </h3>
+            <p style={{ margin: 0, color: 'var(--muted)' }}>
+              {state.shop.address
+                ? state.shop.address
+                : 'Publica la dirección y el mapa para que los clientes sepan cómo llegar.'}
+            </p>
+          </div>
+          <span className="btn small">Editar</span>
         </div>
       </Link>
       <div className="grid stats">

@@ -11,6 +11,7 @@ import { TallerVehiculos } from './pages/taller/Vehiculos'
 import { TallerClientes } from './pages/taller/Clientes'
 import { TallerObservaciones } from './pages/taller/Observaciones'
 import { TallerCupones } from './pages/taller/Cupones'
+import { TallerUbicacion } from './pages/taller/Ubicacion'
 import { ClienteHome } from './pages/cliente/Home'
 import { ClienteAgendar } from './pages/cliente/Agendar'
 import { ClienteRefacciones } from './pages/cliente/Refacciones'
@@ -18,6 +19,7 @@ import { ClienteObservaciones } from './pages/cliente/Observaciones'
 import { ClienteBusqueda } from './pages/cliente/Busqueda'
 import { ClienteCitas } from './pages/cliente/Citas'
 import { ClienteCupones } from './pages/cliente/Cupones'
+import { ClienteUbicacion } from './pages/cliente/Ubicacion'
 import { Perfil } from './pages/Perfil'
 import { Registro } from './pages/Registro'
 import { Recuperacion } from './pages/Recuperacion'
@@ -67,6 +69,7 @@ export default function App() {
         <Route path="vehiculos" element={<TallerVehiculos />} />
         <Route path="clientes" element={<TallerClientes />} />
         <Route path="observaciones" element={<TallerObservaciones />} />
+        <Route path="ubicacion" element={<TallerUbicacion />} />
         <Route path="perfil" element={<Perfil />} />
       </Route>
       <Route
@@ -84,6 +87,7 @@ export default function App() {
         <Route path="refacciones" element={<ClienteRefacciones />} />
         <Route path="observaciones" element={<ClienteObservaciones />} />
         <Route path="vehiculo" element={<ClienteBusqueda />} />
+        <Route path="ubicacion" element={<ClienteUbicacion />} />
         <Route path="perfil" element={<Perfil />} />
       </Route>
       <Route path="*" element={<Navigate to={user ? (user.role === 'taller' ? '/taller' : '/cliente') : '/login'} />} />

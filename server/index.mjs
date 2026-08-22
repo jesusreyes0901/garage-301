@@ -259,6 +259,7 @@ async function getState(pool) {
           : c.expires_at.toISOString().slice(0, 10)
         : null,
     })),
+    shop: await getShop(pool),
   }
 }
 
@@ -391,6 +392,16 @@ CREATE TABLE IF NOT EXISTS coupons (
   FOREIGN KEY (client_id) REFERENCES users(id),
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
+CREATE TABLE IF NOT EXISTS shop_settings (
+  id VARCHAR(16) PRIMARY KEY,
+  name VARCHAR(120) DEFAULT 'Garage 301',
+  address VARCHAR(300) DEFAULT '',
+  maps_url VARCHAR(500) DEFAULT '',
+  lat VARCHAR(24) DEFAULT '',
+  lng VARCHAR(24) DEFAULT '',
+  notes TEXT,
+  whatsapp VARCHAR(48) DEFAULT ''
+);
 `
 
 async function seedIfEmpty(pool) {
@@ -516,6 +527,25 @@ async function migrate(pool) {
   await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
   await ensureColumn(pool, 'users', 'loyalty_baseline', 'INT NOT NULL DEFAULT 0')
+  await ensureColumn(pool, 'appointments', 'whatsapp_confirm', 'TINYINT NOT NULL DEFAULT 0')
+  await ensureColumn(pool, 'appointments', 'whatsapp_reminder', 'TINYINT NOT NULL DEFAULT 0')
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS shop_settings (
+      id VARCHAR(16) PRIMARY KEY,
+      name VARCHAR(120) DEFAULT 'Garage 301',
+      address VARCHAR(300) DEFAULT '',
+      maps_url VARCHAR(500) DEFAULT '',
+      lat VARCHAR(24) DEFAULT '',
+      lng VARCHAR(24) DEFAULT '',
+      notes TEXT,
+      whatsapp VARCHAR(48) DEFAULT ''
+    )`)
+    await pool.query(
+      `INSERT IGNORE INTO shop_settings (id, name, address) VALUES ('shop', 'Garage 301', 'Av. Industria 301')`,
+    )
+  } catch (err) {
+    console.error('MySQL: shop_settings', err.message)
+  }
 
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS order_materials (
@@ -819,6 +849,241 @@ async function sendGarageEmail(to, subject, message) {
 
   console.error(`No hay servicio de correo configurado. El código para ${to} está arriba en los logs.`)
   return false
+}
+
+function emptyShop() {
+  return {
+    name: 'Garage 301',
+    address: '',
+    mapsUrl: '',
+    lat: '',
+    lng: '',
+    notes: '',
+    whatsapp: '',
+  }
+}
+
+async function getShop(pool) {
+  try {
+    const [rows] = await pool.query("SELECT * FROM shop_settings WHERE id='shop' LIMIT 1")
+    const r = rows[0]
+    if (!r) return emptyShop()
+    return {
+      name: r.name || 'Garage 301',
+      address: r.address || '',
+      mapsUrl: r.maps_url || '',
+      lat: r.lat || '',
+      lng: r.lng || '',
+      notes: r.notes || '',
+      whatsapp: r.whatsapp || '',
+    }
+  } catch {
+    return emptyShop()
+  }
+}
+
+function phoneDigits(phone) {
+  let d = String(phone || '').replace(/\D/g, '')
+  if (d.startsWith('00')) d = d.slice(2)
+  if (d.length === 10) d = `52${d}`
+  return d
+}
+
+function whatsappLink(phone, text) {
+  const d = phoneDigits(phone)
+  if (!d) return ''
+  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`
+}
+
+function whatsappConfigured() {
+  return Boolean(
+    (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) ||
+      (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM) ||
+      (process.env.ULTRAMSG_TOKEN && process.env.ULTRAMSG_INSTANCE) ||
+      process.env.CALLMEBOT_APIKEY,
+  )
+}
+
+async function sendWhatsApp(phone, text) {
+  const to = phoneDigits(phone)
+  if (!to || !text) return false
+
+  if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to,
+            type: 'text',
+            text: { body: text, preview_url: true },
+          }),
+        },
+      )
+      if (res.ok) {
+        console.log(`WhatsApp (Meta) enviado a ${to}`)
+        return true
+      }
+      console.error('WhatsApp Meta:', await res.text())
+    } catch (err) {
+      console.error('WhatsApp Meta falló:', err.message)
+    }
+  }
+
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM) {
+    try {
+      const sid = process.env.TWILIO_ACCOUNT_SID
+      const from = process.env.TWILIO_WHATSAPP_FROM
+      const auth = Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64')
+      const body = new URLSearchParams({
+        From: from.startsWith('whatsapp:') ? from : `whatsapp:${from}`,
+        To: `whatsapp:+${to}`,
+        Body: text,
+      })
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      })
+      if (res.ok) {
+        console.log(`WhatsApp (Twilio) enviado a ${to}`)
+        return true
+      }
+      console.error('WhatsApp Twilio:', await res.text())
+    } catch (err) {
+      console.error('WhatsApp Twilio falló:', err.message)
+    }
+  }
+
+  if (process.env.ULTRAMSG_TOKEN && process.env.ULTRAMSG_INSTANCE) {
+    try {
+      const res = await fetch(`https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: process.env.ULTRAMSG_TOKEN, to: `+${to}`, body: text }),
+      })
+      if (res.ok) {
+        console.log(`WhatsApp (Ultramsg) enviado a ${to}`)
+        return true
+      }
+      console.error('WhatsApp Ultramsg:', await res.text())
+    } catch (err) {
+      console.error('WhatsApp Ultramsg falló:', err.message)
+    }
+  }
+
+  if (process.env.CALLMEBOT_APIKEY) {
+    try {
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${to}&text=${encodeURIComponent(text)}&apikey=${process.env.CALLMEBOT_APIKEY}`
+      const res = await fetch(url)
+      if (res.ok) {
+        console.log(`WhatsApp (CallMeBot) enviado a ${to}`)
+        return true
+      }
+      console.error('WhatsApp CallMeBot:', await res.text())
+    } catch (err) {
+      console.error('WhatsApp CallMeBot falló:', err.message)
+    }
+  }
+
+  return false
+}
+
+function citaWhen(date, time) {
+  try {
+    return new Date(`${date}T${String(time).slice(0, 5)}:00-06:00`).toLocaleString('es-MX', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/Mexico_City',
+    })
+  } catch {
+    return `${date} ${time}`
+  }
+}
+
+function appointmentStartMs(date, time) {
+  const t = String(time || '').slice(0, 5)
+  const d = typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10)
+  return new Date(`${d}T${t}:00-06:00`).getTime()
+}
+
+function confirmWhatsAppText(cita, shop) {
+  const when = citaWhen(cita.date, cita.time)
+  const car = [cita.vehicleBrand || cita.vehicle_brand, cita.vehicleModel || cita.vehicle_model, cita.vehicleYear || cita.vehicle_year]
+    .filter(Boolean)
+    .join(' ')
+  const addr = shop.address ? `\nUbicación: ${shop.address}` : ''
+  const maps = shop.mapsUrl ? `\nMapa: ${shop.mapsUrl}` : ''
+  return `Garage 301: tu cita quedó agendada.\n\nServicio: ${cita.service}\nCuándo: ${when}${car ? `\nVehículo: ${car}` : ''}${addr}${maps}\n\nTe avisaremos por WhatsApp 1 hora antes. Si no puedes asistir, avísanos.`
+}
+
+function reminderWhatsAppText(cita, shop) {
+  const when = citaWhen(cita.date, cita.time)
+  const addr = shop.address ? ` Te esperamos en ${shop.address}.` : ' Te esperamos en el taller.'
+  return `Garage 301: recordatorio. Tu cita es en 1 hora (${when}). Servicio: ${cita.service}.${addr}`
+}
+
+async function notifyAppointmentWhatsApp(pool, cita, kind) {
+  const [users] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [cita.client_id || cita.clientId])
+  const client = users[0]
+  if (!client) return { sent: false, url: '' }
+  const shop = await getShop(pool)
+  const text = kind === 'reminder' ? reminderWhatsAppText(cita, shop) : confirmWhatsAppText(cita, shop)
+  const url = client.phone ? whatsappLink(client.phone, text) : ''
+  const sent = client.phone ? await sendWhatsApp(client.phone, text) : false
+  if (client.email) {
+    void sendGarageEmail(
+      client.email,
+      kind === 'reminder' ? 'Recordatorio de cita — Garage 301' : 'Cita agendada — Garage 301',
+      text,
+    )
+  }
+  if (sent || kind === 'reminder') {
+    const col = kind === 'reminder' ? 'whatsapp_reminder' : 'whatsapp_confirm'
+    try {
+      await pool.query(`UPDATE appointments SET ${col}=1 WHERE id=?`, [cita.id])
+    } catch {
+      /* columna aún no existe */
+    }
+  }
+  return { sent, url }
+}
+
+async function sendDueReminders(pool) {
+  const [rows] = await pool.query(
+    `SELECT * FROM appointments WHERE status NOT IN ('cancelada','completada')`,
+  )
+  const now = Date.now()
+  for (const cita of rows) {
+    const start = appointmentStartMs(cita.date, cita.time)
+    if (!Number.isFinite(start)) continue
+    const reminderAt = start - 60 * 60 * 1000
+    if (now < reminderAt || now >= start) continue
+    if (Number(cita.whatsapp_reminder) === 1) continue
+    const date =
+      typeof cita.date === 'string' ? cita.date.slice(0, 10) : cita.date.toISOString().slice(0, 10)
+    await notifyAppointmentWhatsApp(
+      pool,
+      {
+        ...cita,
+        date,
+        time: String(cita.time).slice(0, 5),
+        vehicleBrand: cita.vehicle_brand,
+        vehicleModel: cita.vehicle_model,
+        vehicleYear: cita.vehicle_year,
+      },
+      'reminder',
+    )
+  }
 }
 
 async function issueVerifyCode(pool, userId, email) {
@@ -1417,9 +1682,34 @@ async function start() {
       }
 
       const [me] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [clientId])
+      let whatsappSent = false
+      let whatsappUrl = ''
+      try {
+        const wa = await notifyAppointmentWhatsApp(
+          pool,
+          {
+            id,
+            client_id: clientId,
+            date,
+            time,
+            service: req.body.service,
+            vehicleBrand,
+            vehicleModel,
+            vehicleYear,
+          },
+          'confirm',
+        )
+        whatsappSent = wa.sent
+        whatsappUrl = wa.url
+      } catch (waErr) {
+        console.error('WhatsApp al agendar:', waErr.message)
+      }
       res.json({
         state: await getState(pool),
         user: me[0] ? publicUser(me[0]) : undefined,
+        whatsappSent,
+        whatsappUrl,
+        whatsappReady: whatsappConfigured(),
       })
     } catch (err) {
       console.error('Error al agendar cita:', err)
@@ -2016,6 +2306,25 @@ async function start() {
     res.json({ state: await getState(pool) })
   })
 
+  app.put('/api/shop', auth, async (req, res) => {
+    if (!requireTaller(req, res)) return
+    const name = String(req.body.name || 'Garage 301').trim() || 'Garage 301'
+    const address = String(req.body.address || '').trim()
+    const mapsUrl = String(req.body.mapsUrl || '').trim()
+    const lat = String(req.body.lat || '').trim()
+    const lng = String(req.body.lng || '').trim()
+    const notes = String(req.body.notes || '').trim()
+    const whatsapp = String(req.body.whatsapp || '').trim()
+    await pool.query(
+      `INSERT INTO shop_settings (id,name,address,maps_url,lat,lng,notes,whatsapp)
+       VALUES ('shop',?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), address=VALUES(address), maps_url=VALUES(maps_url),
+         lat=VALUES(lat), lng=VALUES(lng), notes=VALUES(notes), whatsapp=VALUES(whatsapp)`,
+      [name, address, mapsUrl, lat, lng, notes, whatsapp],
+    )
+    res.json({ state: await getState(pool) })
+  })
+
   const dist = path.join(__dirname, '..', 'dist')
   if (fs.existsSync(dist)) {
     app.use(express.static(dist))
@@ -2027,7 +2336,16 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Garage 301 en el puerto ${PORT}`)
     console.log(`Base de datos MySQL: ${dbName}`)
+    if (whatsappConfigured()) console.log('WhatsApp de citas: listo para enviar confirmación y recordatorio.')
+    else console.log('WhatsApp de citas: sin API. Al agendar se abre wa.me; el aviso de 1 hora requiere configurar WhatsApp en Render.')
   })
+
+  setInterval(() => {
+    void sendDueReminders(pool).catch((err) => console.error('Recordatorios WhatsApp:', err.message))
+  }, 60 * 1000)
+  setTimeout(() => {
+    void sendDueReminders(pool).catch((err) => console.error('Recordatorios WhatsApp:', err.message))
+  }, 8000)
 }
 
 start()

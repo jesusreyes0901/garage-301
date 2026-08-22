@@ -1,4 +1,5 @@
 import type { AppState } from './types'
+import { emptyShop } from './types'
 
 export const seedState = (): AppState => ({
   users: [
@@ -180,4 +181,5 @@ export const seedState = (): AppState => ({
     },
   ],
   coupons: [],
+  shop: { ...emptyShop(), address: 'Av. Industria 301' },
 })

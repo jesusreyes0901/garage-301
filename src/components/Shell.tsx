@@ -3,6 +3,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  MapPin,
   MessageSquare,
   Package,
   PlusCircle,
@@ -25,6 +26,7 @@ const tallerNav = [
   { to: '/taller/cupones', label: 'Cupones', icon: TicketPercent },
   { to: '/taller/vehiculos', label: 'Vehículos', icon: Wrench },
   { to: '/taller/observaciones', label: 'Observaciones', icon: MessageSquare },
+  { to: '/taller/ubicacion', label: 'Ubicación', icon: MapPin },
   { to: '/taller/perfil', label: 'Editar perfil', icon: UserRound },
 ]
 
@@ -36,6 +38,7 @@ const clienteNav = [
   { to: '/cliente/refacciones', label: 'Refacciones', icon: Package },
   { to: '/cliente/observaciones', label: 'Observaciones', icon: MessageSquare },
   { to: '/cliente/vehiculo', label: 'Buscar vehículo', icon: Search },
+  { to: '/cliente/ubicacion', label: 'Ubicación', icon: MapPin },
   { to: '/cliente/perfil', label: 'Editar perfil', icon: UserRound },
 ]
 

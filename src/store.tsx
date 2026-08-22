@@ -15,10 +15,12 @@ import type {
   OrderStatus,
   PartRequest,
   Role,
+  ShopSettings,
   User,
   Vehicle,
   WorkOrder,
 } from './types'
+import { emptyShop } from './types'
 
 const TOKEN_KEY = 'garage301-token'
 const emptyState = (): AppState => ({
@@ -30,6 +32,7 @@ const emptyState = (): AppState => ({
   partRequests: [],
   observations: [],
   coupons: [],
+  shop: emptyShop(),
 })
 
 const API_ROOT = import.meta.env.DEV ? 'http://127.0.0.1:3001' : ''
@@ -120,7 +123,7 @@ interface StoreValue {
   updateProfile: (patch: ProfilePatch) => Promise<string | null>
   addAppointment: (
     a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status'] },
-  ) => Promise<string | null>
+  ) => Promise<{ error: string | null; whatsappSent?: boolean; whatsappUrl?: string }>
   updateAppointmentStatus: (id: string, status: Appointment['status']) => void
   deleteAppointment: (id: string) => void
   deleteAppointments: (ids: string[]) => Promise<string | null>
@@ -148,6 +151,7 @@ interface StoreValue {
   saveCoupon: (
     input: Omit<Coupon, 'id' | 'createdAt' | 'createdBy'> & { id?: string },
   ) => Promise<string | null>
+  saveShop: (shop: ShopSettings) => Promise<string | null>
   deleteCoupon: (id: string) => void
 }
 
@@ -163,6 +167,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...emptyState(),
         ...data.state,
         coupons: data.state.coupons ?? [],
+        shop: data.state.shop ?? emptyShop(),
       })
     }
     if (data.user) setUser(data.user)
@@ -308,11 +313,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status'] }) => {
       try {
         const data = await api('/api/appointments', { method: 'POST', body: JSON.stringify(a) })
-        if (data.error) return data.error as string
+        if (data.error) return { error: data.error as string }
         apply(data)
-        return null
+        return {
+          error: null,
+          whatsappSent: Boolean(data.whatsappSent),
+          whatsappUrl: String(data.whatsappUrl || ''),
+        }
       } catch (err) {
-        return err instanceof Error ? err.message : 'No se pudo agendar la cita.'
+        return {
+          error: err instanceof Error ? err.message : 'No se pudo agendar la cita.',
+        }
       }
     },
     [apply],
@@ -537,6 +548,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [mutate],
   )
 
+  const saveShop = useCallback(
+    async (shop: ShopSettings) => {
+      try {
+        const data = await api('/api/shop', { method: 'PUT', body: JSON.stringify(shop) })
+        if (data.error) return data.error as string
+        apply(data)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'No se pudo guardar la ubicación.'
+      }
+    },
+    [apply],
+  )
+
   const value = useMemo(
     () => ({
       state,
@@ -573,6 +598,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteClient,
       saveCoupon,
       deleteCoupon,
+      saveShop,
     }),
     [
       state,
@@ -609,6 +635,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteClient,
       saveCoupon,
       deleteCoupon,
+      saveShop,
     ],
   )
 
