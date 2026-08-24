@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 
-export const TERMS_TEXT = `Aviso de privacidad y términos de uso — Garage 301
+export const TERMS_TEXT = `Aviso de privacidad y términos de uso — Garaje 301
 
 1. Responsable del tratamiento
-Garage 301 es responsable del tratamiento de tus datos personales cuando usas este portal para registrarte, agendar citas y dar seguimiento a tu vehículo.
+Garaje 301 es responsable del tratamiento de tus datos personales cuando usas este portal para registrarte, agendar citas y dar seguimiento a tu vehículo.
 
 2. Datos que recabamos
 Podemos solicitar y almacenar: nombre, usuario, correo electrónico, teléfono, domicilio, placas, marca, modelo, año, color, fotografías del vehículo, historial de citas, órdenes de trabajo, observaciones y cupones asociados a tu cuenta.
@@ -30,7 +30,7 @@ Eres responsable de custodiar tu usuario y contraseña. Tras intentos fallidos d
 Las citas dependen de disponibilidad. Horario: lunes a viernes 9:00–17:00; sábados 9:00–14:00; domingo cerrado. Diagnósticos y presupuestos finales se confirman en el taller. Los cupones digitales son personales, no transferibles y sujetos a vigencia y reglas del taller.
 
 8. Derechos ARCO
-Puedes solicitar Acceso, Rectificación, Cancelación u Oposición al tratamiento de tus datos personales contactando a Garage 301 a través de los medios publicados por el taller.
+Puedes solicitar Acceso, Rectificación, Cancelación u Oposición al tratamiento de tus datos personales contactando a Garaje 301 a través de los medios publicados por el taller.
 
 9. Aceptación
 Al marcar «Acepto términos y condiciones» en el registro confirmas haber leído este aviso de privacidad y autorizas el tratamiento de tus datos conforme a lo aquí descrito.`

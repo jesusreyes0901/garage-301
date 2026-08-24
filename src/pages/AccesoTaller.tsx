@@ -40,7 +40,7 @@ export function AccesoTaller() {
             <Wrench size={22} />
           </div>
           <div>
-            <h1>Garage 301</h1>
+            <h1>Garaje 301</h1>
             <p>Portal interno del taller</p>
           </div>
         </div>
@@ -68,13 +68,13 @@ export function AccesoTaller() {
             </div>
           </div>
         </div>
-        <p style={{ color: 'var(--muted)' }}>Uso interno · Garage 301</p>
+        <p style={{ color: 'var(--muted)' }}>Uso interno · Garaje 301</p>
       </section>
       <section className="login-panel">
         <div className="card login-card">
           <h2>Acceso del taller</h2>
           <p style={{ color: 'var(--muted)', margin: '0 0 18px' }}>
-            Solo personal de Garage 301. Si aún no tienes cuenta, regístrate aquí.
+            Solo personal de Garaje 301. Si aún no tienes cuenta, regístrate aquí.
           </p>
           <form className="form" onSubmit={onSubmit}>
             <label>

@@ -35,8 +35,8 @@ const backGuest: Option = { label: 'Otras opciones', next: 'guest' }
 
 const TOPICS: Record<string, Topic> = {
   guest: {
-    title: 'Asistente Garage 301',
-    say: 'Hola. Soy tu asistente de Garage 301. Aún no has iniciado sesión. Elige si quieres registrarte, entrar o recuperar tu contraseña, y te explico en voz alta.',
+    title: 'Asistente Garaje 301',
+    say: 'Hola. Soy tu asistente de Garaje 301. Aún no has iniciado sesión. Elige si quieres registrarte, entrar o recuperar tu contraseña, y te explico en voz alta.',
     options: GUEST_MENU,
   },
   registro: {
@@ -367,7 +367,7 @@ const TOPICS: Record<string, Topic> = {
   },
   ubicacion: {
     title: 'Ubicación del taller',
-    say: 'En Ubicación ves la dirección y el mapa de Garage 301. Usa Cómo llegar para abrir Google Maps. Si el taller publicó WhatsApp, también puedes escribirle desde ahí.',
+    say: 'En Ubicación ves la dirección y el mapa de Garaje 301. Usa Cómo llegar para abrir Google Maps. Si el taller publicó WhatsApp, también puedes escribirle desde ahí.',
     options: [
       { label: 'Ir a ubicación', to: '/cliente/ubicacion' },
       { label: 'Agendar una cita', next: 'agendar', to: '/cliente/agendar' },
@@ -453,7 +453,7 @@ export function ClientAssistant() {
   const loggedIn = user?.role === 'cliente'
   const [open, setOpen] = useState(false)
   const [topicId, setTopicId] = useState('guest')
-  const [voice, setVoice] = useState(() => localStorage.getItem('garage301-assistant-voice') !== '0')
+  const [voice, setVoice] = useState(() => localStorage.getItem('garaje301-assistant-voice') !== '0')
   const prevUserId = useRef<string | null>(null)
 
   const hidden =
@@ -540,7 +540,7 @@ export function ClientAssistant() {
   const toggleVoice = () => {
     const next = !voice
     setVoice(next)
-    localStorage.setItem('garage301-assistant-voice', next ? '1' : '0')
+    localStorage.setItem('garaje301-assistant-voice', next ? '1' : '0')
     if (!next) window.speechSynthesis?.cancel()
     else speakSpanish(topic.say)
   }

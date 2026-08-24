@@ -128,7 +128,7 @@ export function Perfil() {
         <div className="card mechanic-badge">
           <BrandLogo height={128} className="lg" />
           <div>
-            <h3>Garage 301</h3>
+            <h3>Garaje 301</h3>
             <p style={{ color: 'var(--muted)', margin: '6px 0 0' }}>Perfil del mecánico</p>
             <p style={{ margin: '10px 0 0' }}>
               {user.name} · @{user.username}

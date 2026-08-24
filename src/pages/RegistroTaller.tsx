@@ -25,7 +25,7 @@ export function RegistroTaller() {
       return
     }
     if (!validEmail(email)) {
-      setError('Escribe un correo válido, por ejemplo  taller@garage301.com')
+      setError('Escribe un correo válido, por ejemplo  taller@garaje301.com')
       return
     }
     const phoneError = validPhone(phone)
@@ -60,7 +60,7 @@ export function RegistroTaller() {
             <Wrench size={22} />
           </div>
           <div>
-            <h1>Garage 301</h1>
+            <h1>Garaje 301</h1>
             <p>Alta de personal</p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export function RegistroTaller() {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="off"
                 name="taller-new-email"
-                placeholder="taller@garage301.com"
+                placeholder="taller@garaje301.com"
                 required
               />
             </label>

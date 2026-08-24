@@ -22,7 +22,7 @@ import type {
 } from './types'
 import { emptyShop } from './types'
 
-const TOKEN_KEY = 'garage301-token'
+const TOKEN_KEY = 'garaje301-token'
 const emptyState = (): AppState => ({
   users: [],
   vehicles: [],

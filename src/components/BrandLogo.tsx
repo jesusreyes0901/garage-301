@@ -9,7 +9,7 @@ export function BrandLogo({
     <img
       className={`brand-logo ${className}`.trim()}
       src="/logo-garage-301.png"
-      alt="Garage 301"
+      alt="Garaje 301"
       style={{ height, width: 'auto' }}
     />
   )

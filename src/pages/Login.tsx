@@ -38,7 +38,7 @@ export function Login() {
         <div className="brand brand-hero">
           <BrandLogo height={118} className="lg" />
           <div>
-            <h1>Garage 301</h1>
+            <h1>Garaje 301</h1>
             <p>Portal del cliente</p>
           </div>
         </div>
@@ -67,7 +67,7 @@ export function Login() {
             </div>
           </div>
         </div>
-        <p style={{ color: 'var(--muted)' }}>Garage 301 · rojo, plateado y negro</p>
+        <p style={{ color: 'var(--muted)' }}>Garaje 301 · rojo, plateado y negro</p>
       </section>
       <section className="login-panel">
         <div className="card login-card">

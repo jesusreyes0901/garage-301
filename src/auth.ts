@@ -1,4 +1,4 @@
-const LOCK_KEY = 'garage301-lock'
+const LOCK_KEY = 'garaje301-lock'
 const MAX_ATTEMPTS = 4
 const SESSION_MS = 8 * 60 * 60 * 1000
 export const RECOVERY_MINUTES = 10
@@ -111,13 +111,13 @@ export function randomRecoveryCode() {
 }
 
 export async function deliverRecoveryCode(email: string, code: string) {
-  const subject = 'Código de recuperación Garage 301'
-  const message = `Hola,\n\nTu código de Garage 301 es: ${code}\nVence en ${RECOVERY_MINUTES} minutos.\n\nSi no pediste este código, ignora el correo.`
+  const subject = 'Código de recuperación Garaje 301'
+  const message = `Hola,\n\nTu código de Garaje 301 es: ${code}\nVence en ${RECOVERY_MINUTES} minutos.\n\nSi no pediste este código, ignora el correo.`
   try {
     const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(email)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ _subject: subject, name: 'Garage 301', message }),
+      body: JSON.stringify({ _subject: subject, name: 'Garaje 301', message }),
     })
     if (res.ok) return
   } catch {

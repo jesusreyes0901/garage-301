@@ -21,7 +21,7 @@ if (!ON_CLOUD) dotenv.config()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const PORT = Number(process.env.PORT || 3001)
-const JWT_SECRET = process.env.JWT_SECRET || 'garage301-dev'
+const JWT_SECRET = process.env.JWT_SECRET || 'garaje301-dev'
 const MAX_ATTEMPTS = 4
 const locks = new Map()
 
@@ -394,7 +394,7 @@ CREATE TABLE IF NOT EXISTS coupons (
 );
 CREATE TABLE IF NOT EXISTS shop_settings (
   id VARCHAR(16) PRIMARY KEY,
-  name VARCHAR(120) DEFAULT 'Garage 301',
+  name VARCHAR(120) DEFAULT 'Garaje 301',
   address VARCHAR(300) DEFAULT '',
   maps_url VARCHAR(500) DEFAULT '',
   lat VARCHAR(24) DEFAULT '',
@@ -413,7 +413,7 @@ async function seedIfEmpty(pool) {
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
   await pool.query(
     `INSERT INTO users (id,name,username,email,password,role,phone,address) VALUES
-    ('u-taller','Carlos Mendoza','cmendoza','admin@taller.com',?,'taller','555-100-2000','Av. Industria 301, Garage 301'),
+    ('u-taller','Carlos Mendoza','cmendoza','admin@taller.com',?,'taller','555-100-2000','Av. Industria 301, Garaje 301'),
     ('u-cliente','Ana Ruiz','anaruiz','ana@correo.com',?,'cliente','555-310-4488','Calle Roble 14'),
     ('u-cliente-2','Luis Herrera','lherrera','luis@correo.com',?,'cliente','555-220-1199','Insurgentes 890')`,
     [hashTaller, hashCliente, hashCliente],
@@ -532,7 +532,7 @@ async function migrate(pool) {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS shop_settings (
       id VARCHAR(16) PRIMARY KEY,
-      name VARCHAR(120) DEFAULT 'Garage 301',
+      name VARCHAR(120) DEFAULT 'Garaje 301',
       address VARCHAR(300) DEFAULT '',
       maps_url VARCHAR(500) DEFAULT '',
       lat VARCHAR(24) DEFAULT '',
@@ -541,7 +541,13 @@ async function migrate(pool) {
       whatsapp VARCHAR(48) DEFAULT ''
     )`)
     await pool.query(
-      `INSERT IGNORE INTO shop_settings (id, name, address) VALUES ('shop', 'Garage 301', 'Av. Industria 301')`,
+      `INSERT IGNORE INTO shop_settings (id, name, address) VALUES ('shop', 'Garaje 301', 'Av. Industria 301')`,
+    )
+    await pool.query(
+      `UPDATE shop_settings SET name='Garaje 301' WHERE id='shop' AND name IN ('Garage 301','')`,
+    )
+    await pool.query(
+      `UPDATE coupons SET description=REPLACE(description,'Garage 301','Garaje 301') WHERE description LIKE '%Garage 301%'`,
     )
   } catch (err) {
     console.error('MySQL: shop_settings', err.message)
@@ -572,7 +578,7 @@ async function migrate(pool) {
           uid('cp'),
           'AFINACION5',
           'Descuento por fidelidad en afinación',
-          'Con 5 o más afinaciones en Garage 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
+          'Con 5 o más afinaciones en Garaje 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
           15,
           0,
           'Afinación mayor',
@@ -771,7 +777,7 @@ async function deleteVehicleCascade(conn, vehicleId) {
 async function sendGarageEmail(to, subject, message) {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#111;color:#f3f3f3;border-radius:16px">
-      <h1 style="color:#e10600;font-size:22px;margin:0 0 12px">Garage 301</h1>
+      <h1 style="color:#e10600;font-size:22px;margin:0 0 12px">Garaje 301</h1>
       <p style="white-space:pre-wrap;line-height:1.5">${message.replace(/</g, '')}</p>
     </div>`
   const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || ''
@@ -782,7 +788,7 @@ async function sendGarageEmail(to, subject, message) {
         method: 'POST',
         headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sender: { name: 'Garage 301', email: fromEmail.includes('<') ? fromEmail.replace(/^.*<|>$/g, '') : fromEmail },
+          sender: { name: 'Garaje 301', email: fromEmail.includes('<') ? fromEmail.replace(/^.*<|>$/g, '') : fromEmail },
           to: [{ email: to }],
           subject,
           textContent: message,
@@ -805,7 +811,7 @@ async function sendGarageEmail(to, subject, message) {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'Garage 301 <onboarding@resend.dev>',
+          from: process.env.EMAIL_FROM || 'Garaje 301 <onboarding@resend.dev>',
           to,
           subject,
           text: message,
@@ -834,7 +840,7 @@ async function sendGarageEmail(to, subject, message) {
         auth: { user, pass: process.env.SMTP_PASS },
       })
       await transporter.sendMail({
-        from: process.env.EMAIL_FROM || `"Garage 301" <${user}>`,
+        from: process.env.EMAIL_FROM || `"Garaje 301" <${user}>`,
         to,
         subject,
         text: message,
@@ -853,7 +859,7 @@ async function sendGarageEmail(to, subject, message) {
 
 function emptyShop() {
   return {
-    name: 'Garage 301',
+    name: 'Garaje 301',
     address: '',
     mapsUrl: '',
     lat: '',
@@ -869,7 +875,7 @@ async function getShop(pool) {
     const r = rows[0]
     if (!r) return emptyShop()
     return {
-      name: r.name || 'Garage 301',
+      name: r.name || 'Garaje 301',
       address: r.address || '',
       mapsUrl: r.maps_url || '',
       lat: r.lat || '',
@@ -1023,13 +1029,13 @@ function confirmWhatsAppText(cita, shop) {
     .join(' ')
   const addr = shop.address ? `\nUbicación: ${shop.address}` : ''
   const maps = shop.mapsUrl ? `\nMapa: ${shop.mapsUrl}` : ''
-  return `Garage 301: tu cita quedó agendada.\n\nServicio: ${cita.service}\nCuándo: ${when}${car ? `\nVehículo: ${car}` : ''}${addr}${maps}\n\nTe avisaremos por WhatsApp 1 hora antes. Si no puedes asistir, avísanos.`
+  return `Garaje 301: tu cita quedó agendada.\n\nServicio: ${cita.service}\nCuándo: ${when}${car ? `\nVehículo: ${car}` : ''}${addr}${maps}\n\nTe avisaremos por WhatsApp 1 hora antes. Si no puedes asistir, avísanos.`
 }
 
 function reminderWhatsAppText(cita, shop) {
   const when = citaWhen(cita.date, cita.time)
   const addr = shop.address ? ` Te esperamos en ${shop.address}.` : ' Te esperamos en el taller.'
-  return `Garage 301: recordatorio. Tu cita es en 1 hora (${when}). Servicio: ${cita.service}.${addr}`
+  return `Garaje 301: recordatorio. Tu cita es en 1 hora (${when}). Servicio: ${cita.service}.${addr}`
 }
 
 async function notifyAppointmentWhatsApp(pool, cita, kind) {
@@ -1043,7 +1049,7 @@ async function notifyAppointmentWhatsApp(pool, cita, kind) {
   if (client.email) {
     void sendGarageEmail(
       client.email,
-      kind === 'reminder' ? 'Recordatorio de cita — Garage 301' : 'Cita agendada — Garage 301',
+      kind === 'reminder' ? 'Recordatorio de cita — Garaje 301' : 'Cita agendada — Garaje 301',
       text,
     )
   }
@@ -1096,8 +1102,8 @@ async function issueVerifyCode(pool, userId, email) {
   console.log(`Código de verificación para ${email}: ${code}`)
   const mailed = await sendGarageEmail(
     email,
-    'Verifica tu correo — Garage 301',
-    `Hola,\n\nTu código de verificación de Garage 301 es: ${code}\nVence en 15 minutos.\n\nSi no creaste esta cuenta, ignora este mensaje.`,
+    'Verifica tu correo — Garaje 301',
+    `Hola,\n\nTu código de verificación de Garaje 301 es: ${code}\nVence en 15 minutos.\n\nSi no creaste esta cuenta, ignora este mensaje.`,
   )
   return mailed
 }
@@ -1222,7 +1228,7 @@ async function start() {
         message:
           expectedRole === 'cliente'
             ? 'Este portal es solo para clientes. El personal entra por el acceso del taller.'
-            : 'Este acceso es exclusivo del personal de Garage 301.',
+            : 'Este acceso es exclusivo del personal de Garaje 301.',
       })
     }
     if (Number(found.email_verified) === 0) {
@@ -1339,8 +1345,8 @@ async function start() {
       console.log(`Código de recuperación para ${found.email}: ${code}`)
       await sendGarageEmail(
         found.email,
-        'Código de recuperación Garage 301',
-        `Tu código de Garage 301 es: ${code}\nVence en 10 minutos.`,
+        'Código de recuperación Garaje 301',
+        `Tu código de Garaje 301 es: ${code}\nVence en 10 minutos.`,
       )
     }
     res.json({ ok: true })
@@ -2308,7 +2314,7 @@ async function start() {
 
   app.put('/api/shop', auth, async (req, res) => {
     if (!requireTaller(req, res)) return
-    const name = String(req.body.name || 'Garage 301').trim() || 'Garage 301'
+    const name = String(req.body.name || 'Garaje 301').trim() || 'Garaje 301'
     const address = String(req.body.address || '').trim()
     const mapsUrl = String(req.body.mapsUrl || '').trim()
     const lat = String(req.body.lat || '').trim()
@@ -2334,7 +2340,7 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`API Garage 301 en el puerto ${PORT}`)
+    console.log(`API Garaje 301 en el puerto ${PORT}`)
     console.log(`Base de datos MySQL: ${dbName}`)
     if (whatsappConfigured()) console.log('WhatsApp de citas: listo para enviar confirmación y recordatorio.')
     else console.log('WhatsApp de citas: sin API. Al agendar se abre wa.me; el aviso de 1 hora requiere configurar WhatsApp en Render.')

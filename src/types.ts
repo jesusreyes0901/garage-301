@@ -151,7 +151,7 @@ export interface ShopSettings {
 
 export function emptyShop(): ShopSettings {
   return {
-    name: 'Garage 301',
+    name: 'Garaje 301',
     address: '',
     mapsUrl: '',
     lat: '',

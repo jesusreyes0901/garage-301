@@ -52,7 +52,7 @@ export function ShopMap({ shop }: { shop: ShopSettings }) {
   return (
     <div className="shop-map">
       <iframe
-        title={`Mapa de ${shop.name || 'Garage 301'}`}
+        title={`Mapa de ${shop.name || 'Garaje 301'}`}
         src={src}
         loading="lazy"
         referrerPolicy="no-referrer-when-downgrade"

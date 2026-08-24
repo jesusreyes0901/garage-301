@@ -54,7 +54,7 @@ export function Shell() {
             <>
               <BrandLogo height={58} />
               <div>
-                <h1>Garage 301</h1>
+                <h1>Garaje 301</h1>
                 <p>Portal del cliente</p>
               </div>
             </>
@@ -64,7 +64,7 @@ export function Shell() {
                 <Wrench size={22} />
               </div>
               <div>
-                <h1>Garage 301</h1>
+                <h1>Garaje 301</h1>
                 <p>Gestión del taller</p>
               </div>
             </>

@@ -44,7 +44,7 @@ export function Verificar() {
         <div className="brand brand-hero">
           <BrandLogo height={118} className="lg" />
           <div>
-            <h1>Garage 301</h1>
+            <h1>Garaje 301</h1>
             <p>Verificación de correo</p>
           </div>
         </div>

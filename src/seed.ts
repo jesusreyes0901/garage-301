@@ -11,7 +11,7 @@ export const seedState = (): AppState => ({
       password: 'taller123',
       role: 'taller',
       phone: '555-100-2000',
-      address: 'Av. Industria 301, Garage 301',
+      address: 'Av. Industria 301, Garaje 301',
       avatar: '',
     },
     {
