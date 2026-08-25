@@ -550,6 +550,7 @@ async function migrate(pool) {
     await pool.query(
       `UPDATE coupons SET description=REPLACE(description,'Garage 301','Garaje 301') WHERE description LIKE '%Garage 301%'`,
     )
+    await pool.query(`UPDATE coupons SET discount_amount=0 WHERE discount_amount<>0`)
   } catch (err) {
     console.error('MySQL: shop_settings', err.message)
   }
@@ -579,7 +580,7 @@ async function migrate(pool) {
           uid('cp'),
           'AFINACION5',
           'Descuento por fidelidad en afinación',
-          'Con 5 o más afinaciones en Garaje 301 obtienes descuento en tu próxima afinación. Muestra este cupón al taller.',
+          'Con 5 o más afinaciones en Garaje 301 obtienes un porcentaje de descuento en tu próxima afinación.',
           15,
           0,
           'Afinación mayor',
@@ -634,6 +635,11 @@ async function resetLoyaltyCounter(pool, clientId) {
   return 0
 }
 
+function couponPercent(value) {
+  const n = Math.round(Number(value) || 0)
+  return Math.min(100, Math.max(0, n))
+}
+
 function isLoyaltyCoupon(coupon) {
   if (!coupon) return false
   const code = String(coupon.code || '').toUpperCase()
@@ -657,7 +663,7 @@ async function ensureLoyaltyCoupon(pool, clientId) {
       uid('cp'),
       code,
       'Cupón por 5 afinaciones',
-      `Completaste 5 afinaciones en este ciclo. Usa el cupón y el contador vuelve a cero para juntar otras 5.`,
+      `Completaste 5 afinaciones en este ciclo. El cupón es un porcentaje sobre la cotización; al usarlo el contador vuelve a cero.`,
       15,
       0,
       'Afinación mayor',
@@ -1595,8 +1601,8 @@ async function start() {
         }
         if (!couponCode && oldCita.coupon_code) {
           couponCode = String(oldCita.coupon_code).toUpperCase()
-          discount = Number(oldCita.discount || 0)
         }
+        discount = 0
       }
 
       if (couponCode && !oldCita) {
@@ -1621,20 +1627,7 @@ async function start() {
         if (coupon.service_type && coupon.service_type !== req.body.service) {
           return res.json({ error: `Este cupón solo aplica para ${coupon.service_type}.` })
         }
-        const basePrices = {
-          'Afinación mayor': 1800,
-          'Afinación menor': 1100,
-          'Cambio de aceite': 650,
-          Frenos: 2200,
-          Suspensión: 2800,
-          'Diagnóstico computarizado': 500,
-          'Sistema eléctrico': 900,
-          'Cambio de clutch': 4500,
-          Otro: 800,
-        }
-        const base = basePrices[coupon.service_type] || 1000
-        const fromPercent = Math.round((base * Number(coupon.discount_percent || 0)) / 100)
-        discount = Math.min(base, fromPercent + Number(coupon.discount_amount || 0))
+        discount = 0
       }
 
       await ensureColumn(pool, 'appointments', 'vehicle_brand', "VARCHAR(80) DEFAULT ''")
@@ -2342,6 +2335,8 @@ async function start() {
       .replace(/\s+/g, '')
     const title = String(req.body.title || '').trim()
     if (!code || !title) return res.json({ error: 'Código y título son obligatorios.' })
+    const percent = couponPercent(req.body.discountPercent)
+    if (percent < 1) return res.json({ error: 'El cupón debe tener un porcentaje de 1 a 100.' })
     const id = uid('cp')
     try {
       await pool.query(
@@ -2353,8 +2348,8 @@ async function start() {
           code,
           title,
           req.body.description || '',
-          Number(req.body.discountPercent || 0),
-          Number(req.body.discountAmount || 0),
+          percent,
+          0,
           req.body.serviceType || 'Afinación mayor',
           Number(req.body.minAfinaciones || 0),
           req.body.active === false ? 0 : 1,
@@ -2381,6 +2376,8 @@ async function start() {
       .trim()
       .toUpperCase()
       .replace(/\s+/g, '')
+    const percent = couponPercent(req.body.discountPercent ?? c.discount_percent)
+    if (percent < 1) return res.json({ error: 'El cupón debe tener un porcentaje de 1 a 100.' })
     try {
       await pool.query(
         `UPDATE coupons SET code=?, title=?, description=?, discount_percent=?, discount_amount=?,
@@ -2389,8 +2386,8 @@ async function start() {
           code,
           String(req.body.title ?? c.title).trim(),
           req.body.description ?? c.description,
-          Number(req.body.discountPercent ?? c.discount_percent),
-          Number(req.body.discountAmount ?? c.discount_amount),
+          percent,
+          0,
           req.body.serviceType ?? c.service_type,
           Number(req.body.minAfinaciones ?? c.min_afinaciones),
           req.body.active === false || req.body.active === 0 ? 0 : 1,

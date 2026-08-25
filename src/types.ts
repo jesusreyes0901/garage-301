@@ -199,16 +199,18 @@ export const SERVICE_BASE_PRICES: Record<string, number> = {
   Otro: 800,
 }
 
-export function couponDiscountBreakdown(coupon: {
-  serviceType: string
-  discountPercent: number
-  discountAmount: number
-}) {
-  const base = SERVICE_BASE_PRICES[coupon.serviceType] ?? 1000
-  const fromPercent = Math.round((base * (coupon.discountPercent || 0)) / 100)
-  const discount = Math.min(base, fromPercent + (coupon.discountAmount || 0))
+export function couponPercent(coupon: { discountPercent?: number }) {
+  const p = Math.round(Number(coupon.discountPercent) || 0)
+  return Math.min(100, Math.max(0, p))
+}
+
+/** Descuento en pesos a partir de un subtotal real (cotización / orden). Solo % */
+export function couponDiscountBreakdown(coupon: { discountPercent: number; discountAmount?: number }, base = 0) {
+  const percent = couponPercent(coupon)
+  const discount = Math.min(base, Math.round((base * percent) / 100))
   return {
     base,
+    percent,
     discount,
     final: Math.max(0, base - discount),
   }

@@ -14,8 +14,8 @@ import {
   workSlotsForDate,
 } from '../../schedule'
 import { BrandModelFields } from '../../components/BrandModelFields'
-import { formatMoney, useStore } from '../../store'
-import { SERVICES, couponDiscountBreakdown } from '../../types'
+import { useStore } from '../../store'
+import { SERVICES } from '../../types'
 
 export function ClienteAgendar() {
   const { state, user, addAppointment } = useStore()
@@ -49,8 +49,6 @@ export function ClienteAgendar() {
       }) || null
     )
   }, [couponCode, state.coupons, user])
-
-  const breakdown = activeCoupon ? couponDiscountBreakdown(activeCoupon) : null
 
   useEffect(() => {
     if (!couponFromUrl) return
@@ -119,10 +117,9 @@ export function ClienteAgendar() {
     }
     setBusy(true)
     setError(null)
-    const discountNote =
-      activeCoupon && breakdown
-        ? `Cupón ${activeCoupon.code}: ${formatMoney(breakdown.base)} → ${formatMoney(breakdown.final)} (−${formatMoney(breakdown.discount)})`
-        : ''
+    const discountNote = activeCoupon
+      ? `Cupón ${activeCoupon.code}: ${activeCoupon.discountPercent}% en ${activeCoupon.serviceType}`
+      : ''
     const waWin = window.open('', '_blank')
     const result = await addAppointment({
       clientId: user.id,
@@ -135,7 +132,7 @@ export function ClienteAgendar() {
       vehicleModel: model.trim(),
       vehicleYear: yearNum,
       couponCode: activeCoupon?.code || reagendar?.couponCode,
-      discount: breakdown?.discount || reagendar?.discount || 0,
+      discount: 0,
       rescheduleFrom: reagendar?.id,
     })
     setBusy(false)
@@ -170,24 +167,15 @@ export function ClienteAgendar() {
       </div>
       <div className="card" style={{ maxWidth: 880 }}>
         <form className="form" onSubmit={onSubmit}>
-          {activeCoupon && breakdown && (
+          {activeCoupon && (
             <div className="coupon-card" style={{ marginBottom: 4 }}>
               <div className="code">{activeCoupon.code}</div>
-              <strong>Descuento en {activeCoupon.serviceType}</strong>
-              <div className="coupon-discount">
-                <div className="coupon-discount-row">
-                  <span>Precio</span>
-                  <span>{formatMoney(breakdown.base)}</span>
-                </div>
-                <div className="coupon-discount-row save">
-                  <span>Descuento</span>
-                  <span>−{formatMoney(breakdown.discount)}</span>
-                </div>
-                <div className="coupon-discount-row total">
-                  <span>Total con cupón</span>
-                  <strong>{formatMoney(breakdown.final)}</strong>
-                </div>
-              </div>
+              <strong>
+                {activeCoupon.discountPercent}% de descuento en {activeCoupon.serviceType}
+              </strong>
+              <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 13 }}>
+                El porcentaje se aplica cuando el taller arma la cotización. Aquí no se muestra un precio.
+              </p>
             </div>
           )}
           <BrandModelFields
@@ -315,7 +303,7 @@ export function ClienteAgendar() {
             <div className="error">Agrega tu teléfono en Editar perfil para recibir el WhatsApp de la cita.</div>
           )}
           <button className="btn" type="submit" disabled={busy || !time}>
-            {busy ? 'Agendando…' : reagendar ? 'Confirmar nuevo horario' : activeCoupon ? 'Confirmar cita con descuento' : 'Confirmar solicitud'}
+            {busy ? 'Agendando…' : reagendar ? 'Confirmar nuevo horario' : activeCoupon ? 'Confirmar cita con cupón' : 'Confirmar solicitud'}
           </button>
         </form>
       </div>

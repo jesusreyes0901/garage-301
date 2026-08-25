@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { TicketPercent } from 'lucide-react'
-import { formatDay, formatMoney, useStore } from '../../store'
-import { couponDiscountBreakdown, type Coupon } from '../../types'
+import { formatDay, useStore } from '../../store'
+import { type Coupon } from '../../types'
 
 export function countAfinaciones(
   appointments: { clientId: string; service: string; status: string; orderId?: string }[],
@@ -75,7 +75,7 @@ export function ClienteCupones() {
       <div className="page-head">
         <div>
           <h2>Mis cupones</h2>
-          <p>Usa un cupón para agendar con descuento. Al usarlo, el contador de 5 afinaciones se reinicia.</p>
+          <p>Usa un cupón para agendar. El descuento es un porcentaje; el taller lo aplica al cotizar.</p>
         </div>
       </div>
       <div className="grid stats" style={{ marginBottom: 16 }}>
@@ -86,7 +86,7 @@ export function ClienteCupones() {
           <div className="value">{afinaciones}</div>
           <div className="hint">
             {afinaciones >= 5
-              ? 'Ya calificas para descuento en afinación'
+              ? 'Ya calificas para un porcentaje de descuento en afinación'
               : `Te faltan ${5 - afinaciones} en este ciclo (tras usar el cupón el contador vuelve a 0)`}
           </div>
         </div>
@@ -128,40 +128,16 @@ export function CouponView({
   lockedHint?: string
   showUse?: boolean
 }) {
-  const breakdown = couponDiscountBreakdown(c)
   return (
     <div className="coupon-card" style={applied ? undefined : { opacity: 0.75 }}>
       <div className="code">{c.code}</div>
       <strong>{c.title}</strong>
       <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>{c.description}</p>
       {lockedHint && <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>{lockedHint}</p>}
-      {applied && (
-        <div className="coupon-discount">
-          <div className="coupon-discount-row">
-            <span>Precio de {c.serviceType}</span>
-            <span>{formatMoney(breakdown.base)}</span>
-          </div>
-          <div className="coupon-discount-row save">
-            <span>
-              Descuento aplicado
-              {c.discountPercent > 0 ? ` (${c.discountPercent}%)` : ''}
-              {c.discountAmount > 0 ? ` + ${formatMoney(c.discountAmount)}` : ''}
-            </span>
-            <span>−{formatMoney(breakdown.discount)}</span>
-          </div>
-          <div className="coupon-discount-row total">
-            <span>Total con cupón</span>
-            <strong>{formatMoney(breakdown.final)}</strong>
-          </div>
-        </div>
-      )}
-      {!applied && (
-        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-          {c.discountPercent > 0 && <span>{c.discountPercent}% </span>}
-          {c.discountAmount > 0 && <span>{formatMoney(c.discountAmount)} </span>}
-          en {c.serviceType}
-        </div>
-      )}
+      <div style={{ fontSize: 14, marginTop: 4 }}>
+        <strong>{c.discountPercent}%</strong>
+        <span style={{ color: 'var(--muted)' }}> de descuento en {c.serviceType}</span>
+      </div>
       {c.expiresAt && (
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
           Vigente hasta {formatDay(c.expiresAt)}

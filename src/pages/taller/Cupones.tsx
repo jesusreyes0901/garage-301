@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { TicketPercent } from 'lucide-react'
-import { formatDay, formatMoney, useStore, userById } from '../../store'
+import { formatDay, useStore, userById } from '../../store'
 import { SERVICES } from '../../types'
 import type { Coupon } from '../../types'
 
@@ -9,7 +9,6 @@ const emptyForm = {
   title: '',
   description: '',
   discountPercent: 15,
-  discountAmount: 0,
   serviceType: 'Afinación mayor',
   minAfinaciones: 5,
   active: true,
@@ -32,7 +31,6 @@ export function TallerCupones() {
       title: c.title,
       description: c.description,
       discountPercent: c.discountPercent,
-      discountAmount: c.discountAmount,
       serviceType: c.serviceType,
       minAfinaciones: c.minAfinaciones,
       active: c.active,
@@ -57,7 +55,7 @@ export function TallerCupones() {
       title: form.title,
       description: form.description,
       discountPercent: Number(form.discountPercent) || 0,
-      discountAmount: Number(form.discountAmount) || 0,
+      discountAmount: 0,
       serviceType: form.serviceType,
       minAfinaciones: Number(form.minAfinaciones) || 0,
       active: form.active,
@@ -78,8 +76,7 @@ export function TallerCupones() {
         <div>
           <h2>Cupones digitales</h2>
           <p>
-            Crea y edita cupones visibles para clientes. Elige afinación mayor o menor, u otro servicio. El cupón de fidelidad se activa al llegar a 5
-            afinaciones.
+            Crea cupones con un porcentaje sobre el servicio. El monto en pesos se aplica al cotizar o entregar. El de fidelidad se activa a las 5 afinaciones.
           </p>
         </div>
       </div>
@@ -126,27 +123,17 @@ export function TallerCupones() {
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
             </label>
-            <div className="form-row">
-              <label>
-                Descuento %
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={form.discountPercent}
-                  onChange={(e) => setForm((f) => ({ ...f, discountPercent: Number(e.target.value) }))}
-                />
-              </label>
-              <label>
-                Descuento fijo (MXN)
-                <input
-                  type="number"
-                  min={0}
-                  value={form.discountAmount}
-                  onChange={(e) => setForm((f) => ({ ...f, discountAmount: Number(e.target.value) }))}
-                />
-              </label>
-            </div>
+            <label>
+              Descuento %
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={form.discountPercent}
+                onChange={(e) => setForm((f) => ({ ...f, discountPercent: Number(e.target.value) }))}
+                required
+              />
+            </label>
             <div className="form-row">
               <label>
                 Mín. afinaciones
@@ -215,8 +202,7 @@ export function TallerCupones() {
                 <strong>{c.title}</strong>
                 <p style={{ margin: '6px 0', color: 'var(--muted)', fontSize: 13 }}>{c.description}</p>
                 <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {c.discountPercent > 0 && <span>{c.discountPercent}% · </span>}
-                  {c.discountAmount > 0 && <span>{formatMoney(c.discountAmount)} · </span>}
+                  {c.discountPercent > 0 && <span>{c.discountPercent}% de descuento · </span>}
                   {c.serviceType}
                   {c.minAfinaciones > 0 && <> · mín. {c.minAfinaciones} afinaciones</>}
                   {c.expiresAt && <> · vence {formatDay(c.expiresAt)}</>}

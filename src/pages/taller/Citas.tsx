@@ -127,7 +127,7 @@ export function TallerCitas() {
                       {a.couponCode ? (
                         <div style={{ color: 'var(--amber)', fontSize: 12, marginTop: 4 }}>
                           Cupón {a.couponCode}
-                          {a.discount ? ` · −$${Number(a.discount).toFixed(0)}` : ''}
+                          {a.couponCode ? ` · cupón ${a.couponCode}` : ''}
                         </div>
                       ) : null}
                     </td>

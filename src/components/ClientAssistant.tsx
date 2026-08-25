@@ -134,7 +134,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'agendar-cupon': {
     title: 'Cupón al agendar',
-    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación mayor o afinación menor. El descuento se muestra antes de confirmar. Al usarlo, ese cupón se consume.',
+    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación mayor o menor. Verás el porcentaje, no un precio. El taller aplica ese % al cotizar.',
     options: [
       { label: 'Ver mis cupones', next: 'cupones', to: '/cliente/cupones' },
       { label: 'Confirmar la cita', next: 'agendar-confirmar' },
@@ -203,7 +203,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'cupones-ver': {
     title: 'Ver cupones',
-    say: 'En Cupones ves los que ya puedes usar, con el porcentaje o el monto. También pueden aparecer en tu panel de inicio. Si uno pide más afinaciones, sale bloqueado hasta que las completes.',
+    say: 'En Cupones ves los que ya puedes usar, con el porcentaje de descuento. También pueden aparecer en tu panel de inicio. Si uno pide más afinaciones, sale bloqueado hasta que las completes.',
     options: [
       { label: 'Cómo usar uno', next: 'cupones-usar' },
       { label: 'Ir a cupones', to: '/cliente/cupones' },
