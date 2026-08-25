@@ -11,6 +11,7 @@ export function StatusBadge({
     en_proceso: { cls: '', label: 'En proceso' },
     completada: { cls: 'ok', label: 'Completada' },
     cancelada: { cls: 'danger', label: 'Cancelada' },
+    no_asistio: { cls: 'danger', label: 'No asistió' },
     abierta: { cls: 'info', label: 'Abierta' },
     espera_refaccion: { cls: 'warn', label: 'Espera refacción' },
     lista: { cls: 'ok', label: 'Lista' },

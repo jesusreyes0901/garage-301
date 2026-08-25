@@ -122,7 +122,7 @@ interface StoreValue {
   logout: () => void
   updateProfile: (patch: ProfilePatch) => Promise<string | null>
   addAppointment: (
-    a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status'] },
+    a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status']; rescheduleFrom?: string },
   ) => Promise<{ error: string | null; whatsappSent?: boolean; whatsappUrl?: string }>
   updateAppointmentStatus: (id: string, status: Appointment['status']) => void
   deleteAppointment: (id: string) => void
@@ -310,7 +310,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [apply])
 
   const addAppointment = useCallback(
-    async (a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status'] }) => {
+    async (a: Omit<Appointment, 'id' | 'status'> & { status?: Appointment['status']; rescheduleFrom?: string }) => {
       try {
         const data = await api('/api/appointments', { method: 'POST', body: JSON.stringify(a) })
         if (data.error) return { error: data.error as string }

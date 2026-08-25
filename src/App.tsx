@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { useStore } from './store'
 import { Login } from './pages/Login'
 import { Shell } from './components/Shell'
@@ -27,11 +27,32 @@ import { Verificar } from './pages/Verificar'
 import { AccesoTaller } from './pages/AccesoTaller'
 import { RegistroTaller } from './pages/RegistroTaller'
 import { ClientAssistant } from './components/ClientAssistant'
-import type { Role } from './types'
+import type { Role, User } from './types'
+
+function safeNext(user: User, next: string | null) {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) {
+    return user.role === 'taller' ? '/taller' : '/cliente'
+  }
+  if (user.role === 'cliente' && next.startsWith('/cliente')) return next
+  if (user.role === 'taller' && next.startsWith('/taller')) return next
+  return user.role === 'taller' ? '/taller' : '/cliente'
+}
+
+function LoggedRedirect() {
+  const { user } = useStore()
+  const [params] = useSearchParams()
+  if (!user) return <Navigate to="/login" replace />
+  return <Navigate to={safeNext(user, params.get('next'))} replace />
+}
 
 function Guard({ role, children }: { role: Role; children: ReactNode }) {
   const { user } = useStore()
-  if (!user) return <Navigate to={role === 'taller' ? '/acceso-taller' : '/login'} replace />
+  const loc = useLocation()
+  if (!user) {
+    const login = role === 'taller' ? '/acceso-taller' : '/login'
+    const next = encodeURIComponent(`${loc.pathname}${loc.search}`)
+    return <Navigate to={`${login}?next=${next}`} replace />
+  }
   if (user.role !== role) return <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} replace />
   return children
 }
@@ -41,7 +62,7 @@ export default function App() {
   return (
     <>
       <Routes>
-      <Route path="/login" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Login />} />
+      <Route path="/login" element={user ? <LoggedRedirect /> : <Login />} />
       <Route path="/registro" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Registro />} />
       <Route path="/recuperacion" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Recuperacion />} />
       <Route path="/verificar" element={user ? <Navigate to={user.role === 'taller' ? '/taller' : '/cliente'} /> : <Verificar />} />

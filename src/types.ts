@@ -6,6 +6,7 @@ export type AppointmentStatus =
   | 'en_proceso'
   | 'completada'
   | 'cancelada'
+  | 'no_asistio'
 
 export type OrderStatus =
   | 'abierta'

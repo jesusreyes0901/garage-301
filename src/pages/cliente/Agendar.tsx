@@ -22,6 +22,8 @@ export function ClienteAgendar() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const couponFromUrl = (searchParams.get('cupon') || '').trim().toUpperCase()
+  const reagendarId = (searchParams.get('reagendar') || '').trim()
+  const reagendar = state.appointments.find((a) => a.id === reagendarId && a.clientId === user?.id)
   const now = new Date()
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
@@ -56,6 +58,15 @@ export function ClienteAgendar() {
     const found = state.coupons.find((c) => c.code.toUpperCase() === couponFromUrl)
     if (found?.serviceType) setService(found.serviceType)
   }, [couponFromUrl, state.coupons])
+
+  useEffect(() => {
+    if (!reagendar) return
+    if (reagendar.vehicleBrand) setBrand(reagendar.vehicleBrand)
+    if (reagendar.vehicleModel) setModel(reagendar.vehicleModel)
+    if (reagendar.vehicleYear) setYear(String(reagendar.vehicleYear))
+    if (reagendar.service) setService(reagendar.service)
+    if (reagendar.couponCode) setCouponCode(reagendar.couponCode)
+  }, [reagendar])
 
   const cells = useMemo(() => monthCells(cursor.year, cursor.month), [cursor])
   const tone = dayTone(state.appointments, date)
@@ -98,7 +109,7 @@ export function ClienteAgendar() {
       setError('Escribe un año válido del vehículo.')
       return
     }
-    if (couponCode && !activeCoupon) {
+    if (couponCode && !activeCoupon && !reagendar) {
       setError('El cupón no es válido o ya no está vigente.')
       return
     }
@@ -123,8 +134,9 @@ export function ClienteAgendar() {
       vehicleBrand: brand.trim(),
       vehicleModel: model.trim(),
       vehicleYear: yearNum,
-      couponCode: activeCoupon?.code,
-      discount: breakdown?.discount || 0,
+      couponCode: activeCoupon?.code || reagendar?.couponCode,
+      discount: breakdown?.discount || reagendar?.discount || 0,
+      rescheduleFrom: reagendar?.id,
     })
     setBusy(false)
     if (result.error) {
@@ -145,12 +157,14 @@ export function ClienteAgendar() {
     <>
       <div className="page-head">
         <div>
-          <h2>Agendar cita</h2>
+          <h2>{reagendar ? 'Reagendar cita' : 'Agendar cita'}</h2>
           <p>
-            {activeCoupon
-              ? `Cupón ${activeCoupon.code} aplicado. Un auto por horario.`
-              : 'Un auto por horario. Sábados 9:00–14:00 · Lun–Vie 9:00–17:00.'}{' '}
-            Al confirmar te llega WhatsApp de la cita y otro aviso 1 hora antes. Revisa que tu teléfono esté en Editar perfil.
+            {reagendar
+              ? `Vas a cambiar tu cita del ${reagendar.date} a las ${reagendar.time}. Elige un horario nuevo.`
+              : activeCoupon
+                ? `Cupón ${activeCoupon.code} aplicado. Un auto por horario.`
+                : 'Un auto por horario. Sábados 9:00–14:00 · Lun–Vie 9:00–17:00.'}{' '}
+            Al confirmar te llega WhatsApp, un aviso 1 hora antes y, si no llegas, otro mensaje para reagendar. Revisa tu teléfono en Editar perfil.
           </p>
         </div>
       </div>
@@ -301,7 +315,7 @@ export function ClienteAgendar() {
             <div className="error">Agrega tu teléfono en Editar perfil para recibir el WhatsApp de la cita.</div>
           )}
           <button className="btn" type="submit" disabled={busy || !time}>
-            {busy ? 'Agendando…' : activeCoupon ? 'Confirmar cita con descuento' : 'Confirmar solicitud'}
+            {busy ? 'Agendando…' : reagendar ? 'Confirmar nuevo horario' : activeCoupon ? 'Confirmar cita con descuento' : 'Confirmar solicitud'}
           </button>
         </form>
       </div>

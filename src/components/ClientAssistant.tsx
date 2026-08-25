@@ -144,7 +144,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'agendar-confirmar': {
     title: 'Confirmar la cita',
-    say: 'Revisa día, hora, servicio y auto. Pulsa el botón para agendar. Se abre WhatsApp con la confirmación y, una hora antes, te llega otro aviso. Luego te manda a Mis citas. Queda en Pendiente hasta que el taller la confirme.',
+    say: 'Revisa día, hora, servicio y auto. Pulsa para agendar. Te llega WhatsApp de confirmación, otro aviso una hora antes y, si se te pasa la hora, otro mensaje para reagendar. Luego vas a Mis citas.',
     options: [
       { label: 'Ir a mis citas', next: 'citas', to: '/cliente/citas' },
       { label: 'Volver a agendar', next: 'agendar', to: '/cliente/agendar' },
@@ -158,13 +158,14 @@ const TOPICS: Record<string, Topic> = {
       { label: 'Qué significa cada estado', next: 'citas-estados' },
       { label: 'Próximas e historial', next: 'citas-listas' },
       { label: 'Agendar otra cita', next: 'agendar', to: '/cliente/agendar' },
+      { label: 'Reagendar si no llegué', next: 'agendar', to: '/cliente/citas' },
       { label: 'La orden de trabajo', next: 'citas-orden' },
       backPanel,
     ],
   },
   'citas-estados': {
     title: 'Estados de la cita',
-    say: 'Pendiente: el taller aún no confirma. Confirmada: ya hay orden de trabajo. Completada: ya te entregaron. Cancelada: esa cita ya no cuenta y el horario se liberó.',
+    say: 'Pendiente: el taller aún no confirma. Confirmada: ya hay orden de trabajo. No asistió: se te pasó la hora; puedes reagendar. Completada: ya te entregaron. Cancelada: esa cita ya no cuenta y el horario se liberó.',
     options: [
       { label: 'Próximas e historial', next: 'citas-listas' },
       { label: 'Volver a mis citas', next: 'citas', to: '/cliente/citas' },

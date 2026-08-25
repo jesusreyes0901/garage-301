@@ -57,7 +57,7 @@ export function TallerUbicacion() {
       <div className="page-head">
         <div>
           <h2>Ubicación del taller</h2>
-          <p>Los clientes verán esta dirección y el mapa en su panel. También se incluye en el WhatsApp de la cita.</p>
+          <p>Los clientes verán esta dirección y el mapa en su panel. El WhatsApp del taller recibe aviso si un cliente no llega a su cita.</p>
         </div>
       </div>
       <div className="grid two">
@@ -118,6 +118,7 @@ export function TallerUbicacion() {
               WhatsApp del taller
               <PhoneField value={form.whatsapp} onChange={(whatsapp) => setForm((f) => ({ ...f, whatsapp }))} />
             </label>
+            <p className="hint">Ahí te llega el aviso si un cliente no se presenta, además del WhatsApp de tu cuenta de taller.</p>
             <label>
               Indicaciones (entrada, referencias)
               <textarea

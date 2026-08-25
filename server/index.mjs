@@ -529,6 +529,7 @@ async function migrate(pool) {
   await ensureColumn(pool, 'users', 'loyalty_baseline', 'INT NOT NULL DEFAULT 0')
   await ensureColumn(pool, 'appointments', 'whatsapp_confirm', 'TINYINT NOT NULL DEFAULT 0')
   await ensureColumn(pool, 'appointments', 'whatsapp_reminder', 'TINYINT NOT NULL DEFAULT 0')
+  await ensureColumn(pool, 'appointments', 'whatsapp_missed', 'TINYINT NOT NULL DEFAULT 0')
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS shop_settings (
       id VARCHAR(16) PRIMARY KEY,
@@ -895,6 +896,21 @@ function phoneDigits(phone) {
   return d
 }
 
+function publicAppUrl() {
+  const raw = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || ''
+  return String(raw).replace(/\/$/, '')
+}
+
+function rescheduleUrl(citaId) {
+  const path = `/cliente/agendar?reagendar=${encodeURIComponent(citaId)}`
+  const base = publicAppUrl()
+  return base ? `${base}${path}` : path
+}
+
+function rescheduleWhatsAppLine(citaId) {
+  return `\n\nReagendar cita:\n${rescheduleUrl(citaId)}`
+}
+
 function whatsappLink(phone, text) {
   const d = phoneDigits(phone)
   if (!d) return ''
@@ -1029,13 +1045,48 @@ function confirmWhatsAppText(cita, shop) {
     .join(' ')
   const addr = shop.address ? `\nUbicación: ${shop.address}` : ''
   const maps = shop.mapsUrl ? `\nMapa: ${shop.mapsUrl}` : ''
-  return `Garaje 301: tu cita quedó agendada.\n\nServicio: ${cita.service}\nCuándo: ${when}${car ? `\nVehículo: ${car}` : ''}${addr}${maps}\n\nTe avisaremos por WhatsApp 1 hora antes. Si no puedes asistir, avísanos.`
+  return `Garaje 301: tu cita quedó confirmada.\n\nServicio: ${cita.service}\nCuándo: ${when}${car ? `\nVehículo: ${car}` : ''}${addr}${maps}\n\nTe avisaremos 1 hora antes. Si no puedes ir, reagenda con el enlace.${rescheduleWhatsAppLine(cita.id)}`
 }
 
 function reminderWhatsAppText(cita, shop) {
   const when = citaWhen(cita.date, cita.time)
   const addr = shop.address ? ` Te esperamos en ${shop.address}.` : ' Te esperamos en el taller.'
-  return `Garaje 301: recordatorio. Tu cita es en 1 hora (${when}). Servicio: ${cita.service}.${addr}`
+  return `Garaje 301: recordatorio. Tu cita es en 1 hora (${when}). Servicio: ${cita.service}.${addr} Si no llegas a tiempo, reagenda.${rescheduleWhatsAppLine(cita.id)}`
+}
+
+function missedClientWhatsAppText(cita) {
+  const when = citaWhen(cita.date, cita.time)
+  return `Garaje 301: no te presentaste a tu cita (${when}). Servicio: ${cita.service}.\n\nEl horario ya pasó. Puedes elegir otro día aquí:${rescheduleWhatsAppLine(cita.id)}`
+}
+
+function missedShopWhatsAppText(cita, client) {
+  const when = citaWhen(cita.date, cita.time)
+  const car = [cita.vehicleBrand || cita.vehicle_brand, cita.vehicleModel || cita.vehicle_model, cita.vehicleYear || cita.vehicle_year]
+    .filter(Boolean)
+    .join(' ')
+  return `Garaje 301: el cliente no llegó.\n\nCliente: ${client?.name || '—'}\nTel: ${client?.phone || 'sin teléfono'}\nServicio: ${cita.service}\nCita: ${when}${car ? `\nAuto: ${car}` : ''}\n\nLe enviamos enlace para reagendar.`
+}
+
+async function notifyTallerWhatsApp(pool, text) {
+  const shop = await getShop(pool)
+  const phones = new Set()
+  const shopPhone = phoneDigits(shop.whatsapp)
+  if (shopPhone) phones.add(shopPhone)
+  try {
+    const [staff] = await pool.query("SELECT phone, email FROM users WHERE role='taller'")
+    for (const u of staff) {
+      const d = phoneDigits(u.phone)
+      if (d) phones.add(d)
+      if (u.email) void sendGarageEmail(u.email, 'Aviso de cita — Garaje 301', text)
+    }
+  } catch (err) {
+    console.error('Aviso WhatsApp al taller:', err.message)
+  }
+  let sent = false
+  for (const phone of phones) {
+    if (await sendWhatsApp(phone, text)) sent = true
+  }
+  return sent
 }
 
 async function notifyAppointmentWhatsApp(pool, cita, kind) {
@@ -1043,18 +1094,29 @@ async function notifyAppointmentWhatsApp(pool, cita, kind) {
   const client = users[0]
   if (!client) return { sent: false, url: '' }
   const shop = await getShop(pool)
-  const text = kind === 'reminder' ? reminderWhatsAppText(cita, shop) : confirmWhatsAppText(cita, shop)
+  const text =
+    kind === 'reminder'
+      ? reminderWhatsAppText(cita, shop)
+      : kind === 'missed'
+        ? missedClientWhatsAppText(cita)
+        : confirmWhatsAppText(cita, shop)
   const url = client.phone ? whatsappLink(client.phone, text) : ''
   const sent = client.phone ? await sendWhatsApp(client.phone, text) : false
   if (client.email) {
-    void sendGarageEmail(
-      client.email,
-      kind === 'reminder' ? 'Recordatorio de cita — Garaje 301' : 'Cita agendada — Garaje 301',
-      text,
-    )
+    const subject =
+      kind === 'reminder'
+        ? 'Recordatorio de cita — Garaje 301'
+        : kind === 'missed'
+          ? 'No asististe a tu cita — Garaje 301'
+          : 'Cita confirmada — Garaje 301'
+    void sendGarageEmail(client.email, subject, text)
   }
-  if (sent || kind === 'reminder') {
-    const col = kind === 'reminder' ? 'whatsapp_reminder' : 'whatsapp_confirm'
+  if (kind === 'missed') {
+    await notifyTallerWhatsApp(pool, missedShopWhatsAppText(cita, client))
+  }
+  const col =
+    kind === 'reminder' ? 'whatsapp_reminder' : kind === 'missed' ? 'whatsapp_missed' : 'whatsapp_confirm'
+  if (sent || kind === 'reminder' || kind === 'missed') {
     try {
       await pool.query(`UPDATE appointments SET ${col}=1 WHERE id=?`, [cita.id])
     } catch {
@@ -1064,31 +1126,46 @@ async function notifyAppointmentWhatsApp(pool, cita, kind) {
   return { sent, url }
 }
 
+function normalizeCita(cita) {
+  const date =
+    typeof cita.date === 'string' ? cita.date.slice(0, 10) : cita.date.toISOString().slice(0, 10)
+  return {
+    ...cita,
+    date,
+    time: String(cita.time).slice(0, 5),
+    vehicleBrand: cita.vehicleBrand || cita.vehicle_brand,
+    vehicleModel: cita.vehicleModel || cita.vehicle_model,
+    vehicleYear: cita.vehicleYear || cita.vehicle_year,
+  }
+}
+
 async function sendDueReminders(pool) {
   const [rows] = await pool.query(
-    `SELECT * FROM appointments WHERE status NOT IN ('cancelada','completada')`,
+    `SELECT * FROM appointments WHERE status NOT IN ('cancelada','completada','en_proceso','no_asistio')`,
   )
   const now = Date.now()
-  for (const cita of rows) {
+  const hour = 60 * 60 * 1000
+  for (const raw of rows) {
+    const cita = normalizeCita(raw)
     const start = appointmentStartMs(cita.date, cita.time)
     if (!Number.isFinite(start)) continue
-    const reminderAt = start - 60 * 60 * 1000
-    if (now < reminderAt || now >= start) continue
-    if (Number(cita.whatsapp_reminder) === 1) continue
-    const date =
-      typeof cita.date === 'string' ? cita.date.slice(0, 10) : cita.date.toISOString().slice(0, 10)
-    await notifyAppointmentWhatsApp(
-      pool,
-      {
-        ...cita,
-        date,
-        time: String(cita.time).slice(0, 5),
-        vehicleBrand: cita.vehicle_brand,
-        vehicleModel: cita.vehicle_model,
-        vehicleYear: cita.vehicle_year,
-      },
-      'reminder',
-    )
+
+    if (now >= start - hour && now < start && Number(raw.whatsapp_reminder) !== 1) {
+      await notifyAppointmentWhatsApp(pool, cita, 'reminder')
+      continue
+    }
+
+    if (now < start + 15 * 60 * 1000) continue
+    if (now > start + 6 * hour) continue
+    if (Number(raw.whatsapp_missed) === 1) continue
+    try {
+      await pool.query(`UPDATE appointments SET status='no_asistio' WHERE id=? AND status IN ('pendiente','confirmada')`, [
+        cita.id,
+      ])
+    } catch {
+      /* status nuevo */
+    }
+    await notifyAppointmentWhatsApp(pool, cita, 'missed')
   }
 }
 
@@ -1461,10 +1538,12 @@ async function start() {
         return res.json({ error: 'Los sábados solo se agenda de 9:00 a 14:00.' })
       }
       const hour = time.slice(0, 2)
+      const rescheduleFrom = String(req.body.rescheduleFrom || '').trim()
       const [busy] = await pool.query(
         `SELECT COUNT(*) AS n FROM appointments
-         WHERE date=? AND LEFT(time,2)=? AND status NOT IN ('cancelada','completada')`,
-        [date, hour],
+         WHERE date=? AND LEFT(time,2)=? AND status NOT IN ('cancelada','completada','no_asistio')
+         AND id <> ?`,
+        [date, hour, rescheduleFrom || ''],
       )
       if (busy[0].n >= SLOT_CAPACITY) {
         return res.json({ error: 'Ese horario ya está ocupado. Elige otro en verde.' })
@@ -1498,10 +1577,29 @@ async function start() {
       const id = uid('a')
       const notesBase = String(req.body.notes || '')
       const vehicleNote = `${vehicleBrand} ${vehicleModel} ${vehicleYear}`.trim()
-      const couponCode = String(req.body.couponCode || '').trim().toUpperCase() || null
+      let couponCode = String(req.body.couponCode || '').trim().toUpperCase() || null
       let discount = Math.max(0, Number(req.body.discount) || 0)
+      let oldCita = null
+      if (rescheduleFrom) {
+        if (req.user.role !== 'cliente') {
+          return res.json({ error: 'Solo el cliente puede reagendar su cita.' })
+        }
+        const [oldRows] = await pool.query(
+          'SELECT * FROM appointments WHERE id=? AND client_id=? LIMIT 1',
+          [rescheduleFrom, clientId],
+        )
+        oldCita = oldRows[0]
+        if (!oldCita) return res.json({ error: 'No se encontró la cita a reagendar.' })
+        if (['completada', 'en_proceso'].includes(oldCita.status)) {
+          return res.json({ error: 'Esa cita ya está en proceso en el taller.' })
+        }
+        if (!couponCode && oldCita.coupon_code) {
+          couponCode = String(oldCita.coupon_code).toUpperCase()
+          discount = Number(oldCita.discount || 0)
+        }
+      }
 
-      if (couponCode) {
+      if (couponCode && !oldCita) {
         const [couponRows] = await pool.query(
           'SELECT * FROM coupons WHERE UPPER(code)=? AND active=1 LIMIT 1',
           [couponCode],
@@ -1664,7 +1762,7 @@ async function start() {
         console.error('Cupón fidelidad (no bloquea cita):', loyalErr.message)
       }
 
-      if (couponCode) {
+      if (couponCode && !oldCita) {
         try {
           const [couponRows] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [
             couponCode,
@@ -1672,7 +1770,6 @@ async function start() {
           const used = couponRows[0]
           if (isLoyaltyCoupon(used)) {
             await resetLoyaltyCounter(pool, clientId)
-            // AFINACION5 global se mantiene para el próximo ciclo; se oculta por el contador en 0
             if (String(couponCode).toUpperCase() !== 'AFINACION5') {
               await pool.query('DELETE FROM coupons WHERE UPPER(code)=? AND (client_id=? OR client_id IS NULL)', [
                 couponCode,
@@ -1685,6 +1782,10 @@ async function start() {
         } catch (delErr) {
           console.error('No se pudo procesar cupón usado:', delErr.message)
         }
+      }
+
+      if (oldCita) {
+        await pool.query(`UPDATE appointments SET status='cancelada' WHERE id=?`, [oldCita.id])
       }
 
       const [me] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [clientId])
@@ -2342,8 +2443,12 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Garaje 301 en el puerto ${PORT}`)
     console.log(`Base de datos MySQL: ${dbName}`)
-    if (whatsappConfigured()) console.log('WhatsApp de citas: listo para enviar confirmación y recordatorio.')
-    else console.log('WhatsApp de citas: sin API. Al agendar se abre wa.me; el aviso de 1 hora requiere configurar WhatsApp en Render.')
+    if (whatsappConfigured()) {
+      console.log('WhatsApp de citas: confirmación, recordatorio 1 hora antes y aviso si no llegan.')
+      if (!publicAppUrl()) console.log('Pon APP_URL en Render para que el enlace de reagendar sea completo.')
+    } else {
+      console.log('WhatsApp de citas: sin API. Al agendar se abre wa.me; recordatorio y no-show requieren WhatsApp en Render.')
+    }
   })
 
   setInterval(() => {

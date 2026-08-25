@@ -64,7 +64,7 @@ export function isSlotOpenNow(date: string, time: string) {
 
 /** Citas que aún ocupan bahía / horario. */
 function occupiesSlot(a: Appointment) {
-  return a.status !== 'cancelada' && a.status !== 'completada'
+  return a.status !== 'cancelada' && a.status !== 'completada' && a.status !== 'no_asistio'
 }
 
 export function slotTaken(appointments: Appointment[], date: string, time: string) {

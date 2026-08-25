@@ -22,17 +22,25 @@ export function ClienteCitas() {
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <h3>Próximas</h3>
-        <CitasTable items={proximas} empty="Sin citas pendientes" />
+        <CitasTable items={proximas} empty="Sin citas pendientes" allowReschedule />
       </div>
       <div className="card">
         <h3>Historial</h3>
-        <CitasTable items={historial} empty="Aún no hay citas confirmadas" />
+        <CitasTable items={historial} empty="Aún no hay citas confirmadas" allowReschedule />
       </div>
     </>
   )
 }
 
-function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
+function CitasTable({
+  items,
+  empty,
+  allowReschedule,
+}: {
+  items: Appointment[]
+  empty: string
+  allowReschedule?: boolean
+}) {
   const { state } = useStore()
   return (
     <div className="table-wrap">
@@ -45,12 +53,13 @@ function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
             <th>Notas</th>
             <th>Estado</th>
             <th>Orden</th>
+            {allowReschedule && <th></th>}
           </tr>
         </thead>
         <tbody>
           {items.length === 0 && (
             <tr>
-              <td colSpan={6} className="empty">
+              <td colSpan={allowReschedule ? 7 : 6} className="empty">
                 {empty}
               </td>
             </tr>
@@ -58,6 +67,7 @@ function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
           {items.map((a) => {
             const v = vehicleById(state.vehicles, a.vehicleId)
             const orden = state.orders.find((o) => o.id === a.orderId)
+            const canReschedule = ['pendiente', 'confirmada', 'no_asistio'].includes(a.status)
             return (
               <tr key={a.id}>
                 <td>
@@ -87,6 +97,17 @@ function CitasTable({ items, empty }: { items: Appointment[]; empty: string }) {
                   <StatusBadge value={a.status} />
                 </td>
                 <td>{orden?.folio ?? '—'}</td>
+                {allowReschedule && (
+                  <td>
+                    {canReschedule ? (
+                      <Link className="btn secondary small" to={`/cliente/agendar?reagendar=${a.id}`}>
+                        Reagendar
+                      </Link>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                )}
               </tr>
             )
           })}
