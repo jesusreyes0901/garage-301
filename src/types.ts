@@ -176,6 +176,7 @@ export interface AppState {
 
 export const SERVICES = [
   'Afinación mayor',
+  'Afinación menor',
   'Cambio de aceite',
   'Frenos',
   'Suspensión',
@@ -188,6 +189,7 @@ export const SERVICES = [
 /** Precio de referencia del servicio para mostrar descuento del cupón */
 export const SERVICE_BASE_PRICES: Record<string, number> = {
   'Afinación mayor': 1800,
+  'Afinación menor': 1100,
   'Cambio de aceite': 650,
   Frenos: 2200,
   Suspensión: 2800,

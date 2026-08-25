@@ -1623,6 +1623,7 @@ async function start() {
         }
         const basePrices = {
           'Afinación mayor': 1800,
+          'Afinación menor': 1100,
           'Cambio de aceite': 650,
           Frenos: 2200,
           Suspensión: 2800,

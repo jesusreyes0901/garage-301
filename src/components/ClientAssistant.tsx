@@ -134,7 +134,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'agendar-cupon': {
     title: 'Cupón al agendar',
-    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación. El descuento se muestra antes de confirmar. Al usarlo, ese cupón se consume.',
+    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación mayor o afinación menor. El descuento se muestra antes de confirmar. Al usarlo, ese cupón se consume.',
     options: [
       { label: 'Ver mis cupones', next: 'cupones', to: '/cliente/cupones' },
       { label: 'Confirmar la cita', next: 'agendar-confirmar' },

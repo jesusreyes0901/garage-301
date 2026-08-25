@@ -78,7 +78,7 @@ export function TallerCupones() {
         <div>
           <h2>Cupones digitales</h2>
           <p>
-            Crea y edita cupones visibles para clientes. El cupón de fidelidad se activa al llegar a 5
+            Crea y edita cupones visibles para clientes. Elige afinación mayor o menor, u otro servicio. El cupón de fidelidad se activa al llegar a 5
             afinaciones.
           </p>
         </div>
