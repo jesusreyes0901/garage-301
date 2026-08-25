@@ -75,7 +75,7 @@ export function ClienteCupones() {
       <div className="page-head">
         <div>
           <h2>Mis cupones</h2>
-          <p>Usa un cupón para agendar. El descuento es un porcentaje; el taller lo aplica al cotizar.</p>
+          <p>Usa un cupón para agendar. El descuento es un porcentaje; el taller lo aplica al entregar el auto en el recibo.</p>
         </div>
       </div>
       <div className="grid stats" style={{ marginBottom: 16 }}>

@@ -107,6 +107,7 @@ export interface WorkOrder {
   parts: { partId: string; qty: number }[]
   materials: OrderMaterial[]
   discount: number
+  discountPercent?: number
   couponCode?: string
 }
 
@@ -197,6 +198,21 @@ export const SERVICE_BASE_PRICES: Record<string, number> = {
   'Sistema eléctrico': 900,
   'Cambio de clutch': 4500,
   Otro: 800,
+}
+
+export function orderCharge(
+  labor: number,
+  materials: { price: number; qty: number }[],
+  percent = 0,
+) {
+  const materialsTotal = materials.reduce(
+    (sum, m) => sum + Math.max(0, Number(m.price) || 0) * Math.max(1, Number(m.qty) || 1),
+    0,
+  )
+  const subtotal = Math.max(0, Number(labor) || 0) + materialsTotal
+  const pct = Math.min(100, Math.max(0, Math.round(Number(percent) || 0)))
+  const discount = Math.min(subtotal, Math.round((subtotal * pct) / 100))
+  return { materialsTotal, subtotal, percent: pct, discount, total: Math.max(0, subtotal - discount) }
 }
 
 export function couponPercent(coupon: { discountPercent?: number }) {

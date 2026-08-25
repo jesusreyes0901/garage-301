@@ -76,7 +76,7 @@ export function TallerCupones() {
         <div>
           <h2>Cupones digitales</h2>
           <p>
-            Crea cupones con un porcentaje sobre el servicio. El monto en pesos se aplica al cotizar o entregar. El de fidelidad se activa a las 5 afinaciones.
+            Crea cupones con un porcentaje sobre el servicio. El monto en pesos se aplica al entregar el auto en el recibo. El de fidelidad se activa a las 5 afinaciones.
           </p>
         </div>
       </div>

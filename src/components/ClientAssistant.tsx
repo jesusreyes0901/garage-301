@@ -23,6 +23,7 @@ const PANEL_MENU: Option[] = [
   { label: 'Agendar cita', next: 'agendar', to: '/cliente/agendar' },
   { label: 'Mis citas', next: 'citas', to: '/cliente/citas' },
   { label: 'Cupones', next: 'cupones', to: '/cliente/cupones' },
+  { label: 'Recibos', next: 'recibos', to: '/cliente/recibos' },
   { label: 'Refacciones', next: 'refacciones', to: '/cliente/refacciones' },
   { label: 'Observaciones', next: 'observaciones', to: '/cliente/observaciones' },
   { label: 'Buscar vehículo', next: 'vehiculo', to: '/cliente/vehiculo' },
@@ -134,7 +135,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'agendar-cupon': {
     title: 'Cupón al agendar',
-    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación mayor o menor. Verás el porcentaje, no un precio. El taller aplica ese % al cotizar.',
+    say: 'Si tienes un cupón, escríbelo o entra desde Cupones con Usar cupón. Tiene que coincidir con el servicio, por ejemplo afinación mayor o menor. Verás el porcentaje, no un precio. El taller aplica ese % al entregar el auto, en el recibo.',
     options: [
       { label: 'Ver mis cupones', next: 'cupones', to: '/cliente/cupones' },
       { label: 'Confirmar la cita', next: 'agendar-confirmar' },
@@ -183,9 +184,10 @@ const TOPICS: Record<string, Topic> = {
   },
   'citas-orden': {
     title: 'Orden de trabajo',
-    say: 'Cuando el taller confirma tu cita, se crea una orden con folio, por ejemplo OT-1041. Eso significa que tu auto ya está en el flujo de reparación. El seguimiento fino lo ves también en observaciones.',
+    say: 'Cuando el taller confirma tu cita, se crea una orden con folio, por ejemplo OT-1041. Eso significa que tu auto ya está en el flujo de reparación. Al entregarlo, el recibo con precios queda en Recibos para descargar el PDF.',
     options: [
       { label: 'Ir a observaciones', next: 'observaciones', to: '/cliente/observaciones' },
+      { label: 'Ver recibos', next: 'recibos', to: '/cliente/recibos' },
       { label: 'Volver a mis citas', next: 'citas', to: '/cliente/citas' },
       backPanel,
     ],
@@ -213,7 +215,7 @@ const TOPICS: Record<string, Topic> = {
   },
   'cupones-usar': {
     title: 'Usar un cupón',
-    say: 'Pulsa Usar cupón. Te lleva a agendar con el código puesto y el servicio correcto. Confirma la cita. El cupón se gasta en ese momento. El de 5 afinaciones reinicia el contador para juntar otras 5.',
+    say: 'Pulsa Usar cupón. Te lleva a agendar con el código puesto y el servicio correcto. Confirma la cita. El porcentaje se aplica cuando el taller entrega el auto: sale en el recibo PDF. El de 5 afinaciones reinicia el contador al entregar.',
     options: [
       { label: 'Agendar ahora', next: 'agendar', to: '/cliente/agendar' },
       { label: 'Las 5 afinaciones', next: 'cupones-fidelidad' },
@@ -232,10 +234,19 @@ const TOPICS: Record<string, Topic> = {
   },
   'cupones-oculto': {
     title: 'No veo un cupón',
-    say: 'Puede estar vencido, ser de otro cliente, o pedirte más afinaciones. También deja de verse si ya lo usaste al agendar. Si el taller te asignó uno especial, aparece con tu nombre.',
+    say: 'Puede estar vencido, ser de otro cliente, o pedirte más afinaciones. Deja de verse cuando el taller lo aplica al entregar el auto. Si el taller te asignó uno especial, aparece con tu nombre.',
     options: [
       { label: 'Las 5 afinaciones', next: 'cupones-fidelidad' },
       { label: 'Volver a cupones', next: 'cupones', to: '/cliente/cupones' },
+      backPanel,
+    ],
+  },
+  recibos: {
+    title: 'Recibos',
+    say: 'Cuando el taller entrega tu auto, aquí ves el desglose: mano de obra, materiales o refacciones, el cupón si lo hubo y el total. Puedes descargar el PDF. El taller también lo manda por WhatsApp al entregar.',
+    options: [
+      { label: 'Ir a recibos', to: '/cliente/recibos' },
+      { label: 'Mis citas', next: 'citas', to: '/cliente/citas' },
       backPanel,
     ],
   },
@@ -426,6 +437,7 @@ function sectionForPath(path: string, loggedIn: boolean): string {
   if (path.startsWith('/cliente/agendar')) return 'agendar'
   if (path.startsWith('/cliente/citas')) return 'citas'
   if (path.startsWith('/cliente/cupones')) return 'cupones'
+  if (path.startsWith('/cliente/recibos')) return 'recibos'
   if (path.startsWith('/cliente/refacciones')) return 'refacciones'
   if (path.startsWith('/cliente/observaciones')) return 'observaciones'
   if (path.startsWith('/cliente/vehiculo')) return 'vehiculo'
@@ -473,7 +485,7 @@ export function ClientAssistant() {
       const first = user.name.split(' ')[0]
       return {
         ...base,
-        say: `Hola ${first}. Ya iniciaste sesión. Este es el menú de tu panel: mi panel, agendar cita, mis citas, cupones, refacciones, observaciones, buscar vehículo y editar perfil. Elige una y luego puedes pedir más detalle.`,
+        say: `Hola ${first}. Ya iniciaste sesión. Este es el menú de tu panel: mi panel, agendar cita, mis citas, cupones, recibos, refacciones, observaciones, buscar vehículo y editar perfil. Elige una y luego puedes pedir más detalle.`,
       }
     }
     return base
@@ -510,7 +522,7 @@ export function ClientAssistant() {
     if (id === 'panel' && user?.name) {
       const first = user.name.split(' ')[0]
       speakSpanish(
-        `Hola ${first}. Ya iniciaste sesión. Este es el menú de tu panel: mi panel, agendar cita, mis citas, cupones, refacciones, observaciones, buscar vehículo y editar perfil. Elige una y luego puedes pedir más detalle.`,
+        `Hola ${first}. Ya iniciaste sesión. Este es el menú de tu panel: mi panel, agendar cita, mis citas, cupones, recibos, refacciones, observaciones, buscar vehículo y editar perfil. Elige una y luego puedes pedir más detalle.`,
       )
       return
     }

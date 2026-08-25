@@ -20,6 +20,7 @@ import { ClienteBusqueda } from './pages/cliente/Busqueda'
 import { ClienteCitas } from './pages/cliente/Citas'
 import { ClienteCupones } from './pages/cliente/Cupones'
 import { ClienteUbicacion } from './pages/cliente/Ubicacion'
+import { ClienteRecibos } from './pages/cliente/Recibos'
 import { Perfil } from './pages/Perfil'
 import { Registro } from './pages/Registro'
 import { Recuperacion } from './pages/Recuperacion'
@@ -109,6 +110,7 @@ export default function App() {
         <Route path="observaciones" element={<ClienteObservaciones />} />
         <Route path="vehiculo" element={<ClienteBusqueda />} />
         <Route path="ubicacion" element={<ClienteUbicacion />} />
+        <Route path="recibos" element={<ClienteRecibos />} />
         <Route path="perfil" element={<Perfil />} />
       </Route>
       <Route path="*" element={<Navigate to={user ? (user.role === 'taller' ? '/taller' : '/cliente') : '/login'} />} />

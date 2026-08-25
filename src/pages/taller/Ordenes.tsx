@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Trash2 } from 'lucide-react'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
+  downloadOrderReceipt,
+  downloadPdfFromBase64,
   formatMoney,
   orderExpense,
   orderIncome,
@@ -10,7 +12,7 @@ import {
   userById,
   vehicleById,
 } from '../../store'
-import type { OrderStatus, WorkOrder } from '../../types'
+import { orderCharge, type OrderStatus, type WorkOrder } from '../../types'
 
 const STATUSES: OrderStatus[] = ['en_proceso', 'espera_refaccion', 'entregada']
 
@@ -33,6 +35,7 @@ const emptyLine = (): MaterialDraft => ({
 export function TallerOrdenes() {
   const { state, addOrder, updateOrderStatus, deliverOrder, deleteOrders } = useStore()
   const openOrders = state.orders.filter((o) => o.status !== 'entregada')
+  const delivered = [...state.orders.filter((o) => o.status === 'entregada')].slice(-12).reverse()
   const [open, setOpen] = useState(false)
   const [vehicleId, setVehicleId] = useState(state.vehicles[0]?.id ?? '')
   const [mechanic, setMechanic] = useState('Miguel Torres')
@@ -41,9 +44,13 @@ export function TallerOrdenes() {
   const [partId, setPartId] = useState(state.parts[0]?.id ?? '')
   const [qty, setQty] = useState(1)
   const [delivering, setDelivering] = useState<WorkOrder | null>(null)
+  const [deliverLabor, setDeliverLabor] = useState(0)
+  const [deliverCoupon, setDeliverCoupon] = useState('')
+  const [deliverPercent, setDeliverPercent] = useState(0)
   const [lines, setLines] = useState<MaterialDraft[]>([emptyLine()])
   const [busyDeliver, setBusyDeliver] = useState(false)
   const [deliverError, setDeliverError] = useState<string | null>(null)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string[] | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [busyDelete, setBusyDelete] = useState(false)
@@ -70,7 +77,24 @@ export function TallerOrdenes() {
 
   const requestStatus = (order: WorkOrder, status: OrderStatus) => {
     if (status === 'entregada' && order.status !== 'entregada') {
-      setLines([emptyLine()])
+      const existing = (order.materials || []).filter((m) => m.name)
+      setLines(
+        existing.length
+          ? existing.map((m) => ({
+              name: m.name,
+              qty: m.qty,
+              cost: m.cost,
+              price: m.price,
+              partId: m.partId || '',
+            }))
+          : [emptyLine()],
+      )
+      setDeliverLabor(order.labor || 0)
+      setDeliverCoupon(order.couponCode || '')
+      const fromCoupon = state.coupons.find(
+        (c) => c.code.toUpperCase() === String(order.couponCode || '').toUpperCase(),
+      )
+      setDeliverPercent(fromCoupon?.discountPercent || order.discountPercent || 0)
       setDeliverError(null)
       setDelivering(order)
       return
@@ -78,11 +102,24 @@ export function TallerOrdenes() {
     updateOrderStatus(order.id, status)
   }
 
+  const clientCoupons = delivering
+    ? state.coupons.filter(
+        (c) =>
+          c.active &&
+          (!c.clientId || c.clientId === delivering.clientId) &&
+          (!c.expiresAt || c.expiresAt >= new Date().toISOString().slice(0, 10)),
+      )
+    : []
+  const preview = orderCharge(deliverLabor, lines, deliverPercent)
+  const orderCouponMissing =
+    Boolean(delivering?.couponCode) &&
+    !clientCoupons.some((c) => c.code.toUpperCase() === delivering!.couponCode!.toUpperCase())
+
   const onDeliver = async (e: FormEvent) => {
     e.preventDefault()
     if (!delivering) return
     const materials = lines
-      .filter((l) => l.name.trim() && (l.cost > 0 || l.price > 0 || l.qty > 0))
+      .filter((l) => l.name.trim())
       .map((l) => ({
         name: l.name.trim(),
         qty: Math.max(1, Number(l.qty) || 1),
@@ -92,11 +129,25 @@ export function TallerOrdenes() {
       }))
     setBusyDeliver(true)
     setDeliverError(null)
-    const err = await deliverOrder(delivering.id, materials)
+    const waWin = window.open('', '_blank')
+    const result = await deliverOrder(delivering.id, {
+      materials,
+      labor: deliverLabor,
+      couponCode: deliverCoupon || undefined,
+      discountPercent: deliverPercent,
+    })
     setBusyDeliver(false)
-    if (err) {
-      setDeliverError(err)
+    if (result.error) {
+      waWin?.close()
+      setDeliverError(result.error)
       return
+    }
+    if (result.pdfBase64) downloadPdfFromBase64(result.pdfBase64, result.pdfName || `recibo-${delivering.folio}.pdf`)
+    if (!result.whatsappSent && result.whatsappUrl) {
+      if (waWin) waWin.location.href = result.whatsappUrl
+      else window.open(result.whatsappUrl, '_blank')
+    } else {
+      waWin?.close()
     }
     setDelivering(null)
   }
@@ -127,8 +178,8 @@ export function TallerOrdenes() {
         <div>
           <h2>Órdenes de trabajo</h2>
           <p>
-            Estados de la reparación: en proceso, espera o entregada. Marca varias órdenes para
-            eliminarlas juntas si se abrieron por error o el cliente no sigue.
+            Al entregar el auto captura mano de obra, materiales y cupón. Se genera el recibo en PDF
+            (descarga y WhatsApp). Las entregadas quedan abajo para volver a bajar el PDF.
           </p>
         </div>
         <button className="btn" type="button" onClick={() => setOpen((v) => !v)}>
@@ -313,6 +364,45 @@ export function TallerOrdenes() {
         })}
       </div>
 
+      {delivered.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>Entregadas — recibos PDF</h3>
+          <p style={{ color: 'var(--muted)', marginTop: 0 }}>
+            El cliente también puede descargarlas en Recibos. Si WhatsApp no está configurado, el PDF
+            se descarga aquí y se abre wa.me con el desglose.
+          </p>
+          {pdfError && <div className="error">{pdfError}</div>}
+          {delivered.map((o) => {
+            const v = vehicleById(state.vehicles, o.vehicleId)
+            const c = userById(state.users, o.clientId)
+            const charge = orderCharge(o.labor, o.materials || [], o.discountPercent || 0)
+            return (
+              <div className="vehicle-card" key={o.id} style={{ marginBottom: 12 }}>
+                <div>
+                  <strong>{o.folio}</strong>
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+                    {v?.plate || 'Sin placa'} · {c?.name || 'Cliente'} · {formatMoney(charge.total)}
+                    {o.couponCode ? ` · cupón ${o.couponCode}` : ''}
+                  </div>
+                </div>
+                <button
+                  className="btn secondary small"
+                  type="button"
+                  onClick={() => {
+                    setPdfError(null)
+                    void downloadOrderReceipt(o.id, o.folio).catch((err) =>
+                      setPdfError(err instanceof Error ? err.message : 'No se pudo descargar el PDF.'),
+                    )
+                  }}
+                >
+                  Descargar PDF
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {delivering && (
         <div className="modal-backdrop" role="presentation" onClick={() => !busyDeliver && setDelivering(null)}>
           <div
@@ -323,9 +413,64 @@ export function TallerOrdenes() {
           >
             <h2>Entregar {delivering.folio}</h2>
             <p style={{ color: 'var(--muted)', marginTop: 0 }}>
-              Captura el material o refacción usada: el costo suma a Gastos del resumen y el precio cobrado a
-              Ingresos; la utilidad se ajusta sola.
+              Captura mano de obra, materiales y cupón. Al confirmar se descarga el PDF y se manda por WhatsApp al
+              cliente si hay API o se abre wa.me.
             </p>
+            <form className="form" onSubmit={onDeliver}>
+              <div className="form-row">
+                <label>
+                  Mano de obra (MXN)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={deliverLabor}
+                    onChange={(e) => setDeliverLabor(Number(e.target.value))}
+                    required
+                  />
+                </label>
+                <label>
+                  Cupón
+                  <select
+                    value={deliverCoupon}
+                    onChange={(e) => {
+                      const code = e.target.value
+                      setDeliverCoupon(code)
+                      const found = clientCoupons.find((c) => c.code.toUpperCase() === code.toUpperCase())
+                      if (found) setDeliverPercent(found.discountPercent || 0)
+                      else if (
+                        delivering.couponCode &&
+                        code.toUpperCase() === delivering.couponCode.toUpperCase()
+                      ) {
+                        setDeliverPercent(delivering.discountPercent || 0)
+                      } else setDeliverPercent(0)
+                    }}
+                  >
+                    <option value="">Sin cupón</option>
+                    {orderCouponMissing && (
+                      <option value={delivering.couponCode}>
+                        {delivering.couponCode} · de la cita
+                      </option>
+                    )}
+                    {clientCoupons.map((c) => (
+                      <option key={c.id} value={c.code}>
+                        {c.code} · {c.discountPercent}% · {c.serviceType}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label>
+                Porcentaje de descuento
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="1"
+                  value={deliverPercent}
+                  onChange={(e) => setDeliverPercent(Number(e.target.value))}
+                />
+              </label>
             {(delivering.parts.length > 0 || (delivering.materials || []).length > 0) && (
               <p style={{ fontSize: 13, color: 'var(--muted)' }}>
                 Ya en la orden:{' '}
@@ -337,7 +482,6 @@ export function TallerOrdenes() {
                   .join(', ') || '—'}
               </p>
             )}
-            <form className="form" onSubmit={onDeliver}>
               {lines.map((line, idx) => (
                 <div key={idx} className="deliver-line">
                   <div className="deliver-line-head">
@@ -374,8 +518,7 @@ export function TallerOrdenes() {
                           ),
                         )
                       }}
-                      placeholder="Aceite, balatas, filtro…"
-                      required
+                      placeholder="Aceite, balatas, filtro… (opcional si no usaste)"
                     />
                     <datalist id={`parts-${idx}`}>
                       {state.parts.map((p) => (
@@ -437,22 +580,40 @@ export function TallerOrdenes() {
               </button>
               <div className="coupon-discount" style={{ marginTop: 8 }}>
                 <div className="coupon-discount-row">
-                  <span>Gasto estimado de materiales</span>
-                  <strong>
-                    {formatMoney(lines.reduce((s, l) => s + (Number(l.cost) || 0) * (Number(l.qty) || 1), 0))}
-                  </strong>
+                  <span>Mano de obra</span>
+                  <strong>{formatMoney(deliverLabor)}</strong>
                 </div>
                 <div className="coupon-discount-row">
-                  <span>Cobro estimado de materiales</span>
+                  <span>Materiales / refacciones</span>
+                  <strong>{formatMoney(preview.materialsTotal)}</strong>
+                </div>
+                <div className="coupon-discount-row">
+                  <span>Subtotal</span>
+                  <strong>{formatMoney(preview.subtotal)}</strong>
+                </div>
+                {preview.discount > 0 && (
+                  <div className="coupon-discount-row save">
+                    <span>
+                      Cupón {deliverCoupon || ''} ({preview.percent}%)
+                    </span>
+                    <strong>−{formatMoney(preview.discount)}</strong>
+                  </div>
+                )}
+                <div className="coupon-discount-row total">
+                  <span>Total a cobrar</span>
+                  <strong>{formatMoney(preview.total)}</strong>
+                </div>
+                <div className="coupon-discount-row">
+                  <span>Gasto de materiales (taller)</span>
                   <strong>
-                    {formatMoney(lines.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0))}
+                    {formatMoney(lines.reduce((s, l) => s + (Number(l.cost) || 0) * (Number(l.qty) || 1), 0))}
                   </strong>
                 </div>
               </div>
               {deliverError && <div className="error">{deliverError}</div>}
               <div className="row-actions">
                 <button className="btn" type="submit" disabled={busyDeliver}>
-                  {busyDeliver ? 'Guardando…' : 'Confirmar entrega'}
+                  {busyDeliver ? 'Generando recibo…' : 'Entregar y generar PDF'}
                 </button>
                 <button
                   className="btn secondary"

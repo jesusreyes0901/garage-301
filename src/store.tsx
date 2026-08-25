@@ -137,8 +137,13 @@ interface StoreValue {
   deleteOrders: (ids: string[]) => Promise<string | null>
   deliverOrder: (
     id: string,
-    materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
-  ) => Promise<string | null>
+    payload: {
+      materials: { name: string; qty: number; cost: number; price: number; partId?: string }[]
+      labor: number
+      couponCode?: string
+      discountPercent?: number
+    },
+  ) => Promise<{ error: string | null; pdfBase64?: string; pdfName?: string; whatsappSent?: boolean; whatsappUrl?: string }>
   updateVehicleStatus: (id: string, status: Vehicle['status']) => void
   setVehiclePhoto: (id: string, photo: string) => void
   adjustStock: (partId: string, delta: number) => string | null
@@ -418,18 +423,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deliverOrder = useCallback(
     async (
       id: string,
-      materials: { name: string; qty: number; cost: number; price: number; partId?: string }[],
+      payload: {
+        materials: { name: string; qty: number; cost: number; price: number; partId?: string }[]
+        labor: number
+        couponCode?: string
+        discountPercent?: number
+      },
     ) => {
       try {
         const data = await api(`/api/orders/${id}/deliver`, {
           method: 'POST',
-          body: JSON.stringify({ materials }),
+          body: JSON.stringify(payload),
         })
-        if (data.error) return data.error as string
+        if (data.error) return { error: data.error as string }
         apply(data)
-        return null
+        return {
+          error: null,
+          pdfBase64: String(data.pdfBase64 || ''),
+          pdfName: String(data.pdfName || `recibo-${id}.pdf`),
+          whatsappSent: Boolean(data.whatsappSent),
+          whatsappUrl: String(data.whatsappUrl || ''),
+        }
       } catch (err) {
-        return err instanceof Error ? err.message : 'No se pudo entregar la orden.'
+        return {
+          error: err instanceof Error ? err.message : 'No se pudo entregar la orden.',
+        }
       }
     },
     [apply],
@@ -697,4 +715,32 @@ export function formatDay(iso: string) {
     day: 'numeric',
     month: 'short',
   })
+}
+
+export function downloadPdfFromBase64(base64: string, filename: string) {
+  const bin = atob(base64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  const blob = new Blob([bytes], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function downloadOrderReceipt(orderId: string, folio?: string) {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const res = await fetch(`${API_ROOT}/api/orders/${orderId}/recibo.pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error('No se pudo descargar el recibo.')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `recibo-${folio || orderId}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
 }

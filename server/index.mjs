@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import mysql from 'mysql2/promise'
 import nodemailer from 'nodemailer'
+import { buildReceiptPdf, receiptTotals, receiptWhatsAppText } from './receiptPdf.mjs'
 
 const ON_CLOUD = Boolean(
   process.env.RAILWAY_ENVIRONMENT ||
@@ -198,6 +199,7 @@ async function getState(pool) {
       createdAt: new Date(o.created_at).toISOString(),
       labor: Number(o.labor),
       discount: Number(o.discount || 0),
+      discountPercent: Number(o.discount_percent || 0),
       couponCode: o.coupon_code || undefined,
       parts: orderParts
         .filter((p) => p.order_id === o.id)
@@ -527,6 +529,7 @@ async function migrate(pool) {
   await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
   await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
   await ensureColumn(pool, 'users', 'loyalty_baseline', 'INT NOT NULL DEFAULT 0')
+  await ensureColumn(pool, 'work_orders', 'discount_percent', 'INT NOT NULL DEFAULT 0')
   await ensureColumn(pool, 'appointments', 'whatsapp_confirm', 'TINYINT NOT NULL DEFAULT 0')
   await ensureColumn(pool, 'appointments', 'whatsapp_reminder', 'TINYINT NOT NULL DEFAULT 0')
   await ensureColumn(pool, 'appointments', 'whatsapp_missed', 'TINYINT NOT NULL DEFAULT 0')
@@ -895,6 +898,57 @@ async function getShop(pool) {
   }
 }
 
+async function loadReceiptData(pool, orderId) {
+  const [orders] = await pool.query('SELECT * FROM work_orders WHERE id=? LIMIT 1', [orderId])
+  const order = orders[0]
+  if (!order) return null
+  let materials = []
+  try {
+    const [rows] = await pool.query('SELECT * FROM order_materials WHERE order_id=?', [orderId])
+    materials = rows
+  } catch {
+    materials = []
+  }
+  const [clients] = await pool.query('SELECT * FROM users WHERE id=? LIMIT 1', [order.client_id])
+  const client = clients[0] || {}
+  let vehicleLabel = ''
+  if (order.vehicle_id) {
+    const [vs] = await pool.query('SELECT * FROM vehicles WHERE id=? LIMIT 1', [order.vehicle_id])
+    const v = vs[0]
+    if (v) vehicleLabel = `${v.brand || ''} ${v.model || ''} ${v.year || ''} · ${v.plate || ''}`.trim()
+  }
+  const shop = await getShop(pool)
+  const percent = Number(order.discount_percent || 0)
+  return {
+    order,
+    client,
+    materials: materials.map((m) => ({
+      name: m.name,
+      qty: Number(m.qty) || 1,
+      price: Number(m.price) || 0,
+      cost: Number(m.cost) || 0,
+    })),
+    payload: {
+      shopName: shop.name,
+      shopAddress: shop.address,
+      folio: order.folio,
+      date: new Date().toLocaleDateString('es-MX', { dateStyle: 'medium', timeZone: 'America/Mexico_City' }),
+      clientName: client.name || '',
+      vehicle: vehicleLabel,
+      mechanic: order.mechanic || '',
+      description: order.description || '',
+      labor: Number(order.labor) || 0,
+      materials: materials.map((m) => ({
+        name: m.name,
+        qty: Number(m.qty) || 1,
+        price: Number(m.price) || 0,
+      })),
+      couponCode: order.coupon_code || '',
+      percent,
+    },
+  }
+}
+
 function phoneDigits(phone) {
   let d = String(phone || '').replace(/\D/g, '')
   if (d.startsWith('00')) d = d.slice(2)
@@ -1017,6 +1071,78 @@ async function sendWhatsApp(phone, text) {
       console.error('WhatsApp CallMeBot:', await res.text())
     } catch (err) {
       console.error('WhatsApp CallMeBot falló:', err.message)
+    }
+  }
+
+  return false
+}
+
+async function sendWhatsAppDocument(phone, pdfBytes, filename, caption) {
+  const to = phoneDigits(phone)
+  if (!to || !pdfBytes) return false
+  const bytes = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes)
+
+  if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+    try {
+      const form = new FormData()
+      form.append('messaging_product', 'whatsapp')
+      form.append('type', 'application/pdf')
+      form.append('file', new Blob([bytes], { type: 'application/pdf' }), filename)
+      const up = await fetch(
+        `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`,
+        { method: 'POST', headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` }, body: form },
+      )
+      const uploaded = await up.json()
+      if (!up.ok || !uploaded.id) {
+        console.error('WhatsApp Meta media:', JSON.stringify(uploaded))
+      } else {
+        const res = await fetch(
+          `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              to,
+              type: 'document',
+              document: { id: uploaded.id, filename, caption: caption || filename },
+            }),
+          },
+        )
+        if (res.ok) {
+          console.log(`WhatsApp PDF (Meta) enviado a ${to}`)
+          return true
+        }
+        console.error('WhatsApp Meta documento:', await res.text())
+      }
+    } catch (err) {
+      console.error('WhatsApp Meta documento falló:', err.message)
+    }
+  }
+
+  if (process.env.ULTRAMSG_TOKEN && process.env.ULTRAMSG_INSTANCE) {
+    try {
+      const res = await fetch(`https://api.ultramsg.com/${process.env.ULTRAMSG_INSTANCE}/messages/document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: process.env.ULTRAMSG_TOKEN,
+          to: `+${to}`,
+          filename,
+          caption: caption || '',
+          document: Buffer.from(bytes).toString('base64'),
+        }),
+      })
+      if (res.ok) {
+        console.log(`WhatsApp PDF (Ultramsg) enviado a ${to}`)
+        return true
+      }
+      console.error('WhatsApp Ultramsg documento:', await res.text())
+    } catch (err) {
+      console.error('WhatsApp Ultramsg documento falló:', err.message)
     }
   }
 
@@ -1756,27 +1882,7 @@ async function start() {
         console.error('Cupón fidelidad (no bloquea cita):', loyalErr.message)
       }
 
-      if (couponCode && !oldCita) {
-        try {
-          const [couponRows] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [
-            couponCode,
-          ])
-          const used = couponRows[0]
-          if (isLoyaltyCoupon(used)) {
-            await resetLoyaltyCounter(pool, clientId)
-            if (String(couponCode).toUpperCase() !== 'AFINACION5') {
-              await pool.query('DELETE FROM coupons WHERE UPPER(code)=? AND (client_id=? OR client_id IS NULL)', [
-                couponCode,
-                clientId,
-              ])
-            }
-          } else {
-            await pool.query('DELETE FROM coupons WHERE UPPER(code)=?', [couponCode])
-          }
-        } catch (delErr) {
-          console.error('No se pudo procesar cupón usado:', delErr.message)
-        }
-      }
+      // El cupón se aplica y se consume al entregar el auto, no al agendar.
 
       if (oldCita) {
         await pool.query(`UPDATE appointments SET status='cancelada' WHERE id=?`, [oldCita.id])
@@ -1853,18 +1959,22 @@ async function start() {
     const orderId = uid('o')
     const folio = `OT-${1040 + count[0].n + 1}`
     const [me] = await pool.query('SELECT name FROM users WHERE id=?', [req.user.id])
-    const couponNote = cita.coupon_code
-      ? ` Cupón ${cita.coupon_code} (−$${Number(cita.discount || 0).toFixed(0)}).`
-      : ''
+    const couponNote = cita.coupon_code ? ` Cupón ${cita.coupon_code}.` : ''
     const desc = `${cita.service}${cita.notes ? `. ${cita.notes}` : ''}${couponNote}`.trim()
     const laborBase = 600
     const discount = Math.max(0, Number(cita.discount || 0))
+    let percent = 0
+    if (cita.coupon_code) {
+      const [cs] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [cita.coupon_code])
+      percent = couponPercent(cs[0]?.discount_percent)
+    }
     await ensureColumn(pool, 'work_orders', 'discount', 'DECIMAL(10,2) DEFAULT 0')
     await ensureColumn(pool, 'work_orders', 'coupon_code', 'VARCHAR(40) DEFAULT NULL')
+    await ensureColumn(pool, 'work_orders', 'discount_percent', 'INT NOT NULL DEFAULT 0')
     const hasDiscount = await columnExists(pool, 'work_orders', 'discount')
     if (hasDiscount) {
       await pool.query(
-        'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor,discount,coupon_code) VALUES (?,?,?,?,?,?,?,NOW(),?,?,?)',
+        'INSERT INTO work_orders (id,folio,vehicle_id,client_id,mechanic,description,status,created_at,labor,discount,coupon_code,discount_percent) VALUES (?,?,?,?,?,?,?,NOW(),?,?,?,?)',
         [
           orderId,
           folio,
@@ -1876,6 +1986,7 @@ async function start() {
           laborBase,
           discount,
           cita.coupon_code || null,
+          percent,
         ],
       )
     } else {
@@ -1989,6 +2100,14 @@ async function start() {
       const order = rows[0]
       if (!order) return res.status(404).json({ error: 'Orden no encontrada' })
 
+      const labor = Math.max(0, Number(req.body.labor ?? order.labor) || 0)
+      const couponCode = String(req.body.couponCode || order.coupon_code || '').trim().toUpperCase() || null
+      let percent = couponPercent(req.body.discountPercent)
+      if (couponCode && percent < 1) {
+        const [couponRows] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [couponCode])
+        percent = couponPercent(couponRows[0]?.discount_percent)
+      }
+
       await pool.query('DELETE FROM order_materials WHERE order_id=?', [req.params.id])
       const materials = Array.isArray(req.body.materials) ? req.body.materials : []
       for (const m of materials) {
@@ -2006,16 +2125,89 @@ async function start() {
           await pool.query('UPDATE parts SET stock=GREATEST(0, stock-?) WHERE id=?', [qty, partId])
         }
       }
-      await pool.query('UPDATE work_orders SET status=? WHERE id=?', ['entregada', req.params.id])
-      // Libera el horario: la cita deja de ocupar bahía y el día puede volver a verde
+      const totals = receiptTotals(labor, materials, percent)
+      await ensureColumn(pool, 'work_orders', 'discount_percent', 'INT NOT NULL DEFAULT 0')
+      await pool.query(
+        'UPDATE work_orders SET status=?, labor=?, discount=?, coupon_code=?, discount_percent=? WHERE id=?',
+        ['entregada', labor, totals.discount, couponCode, totals.percent, req.params.id],
+      )
       await pool.query(`UPDATE appointments SET status='completada' WHERE order_id=?`, [req.params.id])
       if (order.vehicle_id) {
         await pool.query('UPDATE vehicles SET status=? WHERE id=?', ['entregado', order.vehicle_id])
       }
-      res.json({ state: await getState(pool) })
+
+      if (couponCode) {
+        try {
+          const [couponRows] = await pool.query('SELECT * FROM coupons WHERE UPPER(code)=? LIMIT 1', [couponCode])
+          const used = couponRows[0]
+          if (used) {
+            if (isLoyaltyCoupon(used)) {
+              await resetLoyaltyCounter(pool, order.client_id)
+              if (String(couponCode).toUpperCase() !== 'AFINACION5') {
+                await pool.query(
+                  'DELETE FROM coupons WHERE UPPER(code)=? AND (client_id=? OR client_id IS NULL)',
+                  [couponCode, order.client_id],
+                )
+              }
+            } else {
+              await pool.query('DELETE FROM coupons WHERE UPPER(code)=?', [couponCode])
+            }
+          }
+        } catch (delErr) {
+          console.error('Cupón al entregar:', delErr.message)
+        }
+      }
+
+      const receipt = await loadReceiptData(pool, req.params.id)
+      const pdfBytes = await buildReceiptPdf(receipt.payload)
+      const filename = `recibo-${order.folio}.pdf`
+      const text = receiptWhatsAppText(receipt.payload)
+      let whatsappSent = false
+      let whatsappUrl = receipt.client?.phone ? whatsappLink(receipt.client.phone, text) : ''
+      if (receipt.client?.phone) {
+        const docOk = await sendWhatsAppDocument(receipt.client.phone, pdfBytes, filename, text)
+        const txtOk = docOk ? true : await sendWhatsApp(receipt.client.phone, text)
+        whatsappSent = docOk || txtOk
+      }
+      if (receipt.client?.email) {
+        void sendGarageEmail(receipt.client.email, `Recibo ${order.folio} — Garaje 301`, text)
+      }
+
+      res.json({
+        state: await getState(pool),
+        pdfBase64: Buffer.from(pdfBytes).toString('base64'),
+        pdfName: filename,
+        whatsappSent,
+        whatsappUrl,
+        totals,
+      })
     } catch (err) {
       console.error('Error al entregar orden:', err)
       res.status(500).json({ error: err.message || 'No se pudo entregar la orden.' })
+    }
+  })
+
+  app.get('/api/orders/:id/recibo.pdf', auth, async (req, res) => {
+    try {
+      const receipt = await loadReceiptData(pool, req.params.id)
+      if (!receipt) return res.status(404).json({ error: 'Orden no encontrada' })
+      if (req.user.role === 'cliente') {
+        if (receipt.order.client_id !== req.user.id) {
+          return res.status(403).json({ error: 'No autorizado.' })
+        }
+        if (receipt.order.status !== 'entregada') {
+          return res.status(403).json({ error: 'El recibo estará disponible al entregar el auto.' })
+        }
+      } else if (req.user.role !== 'taller') {
+        return res.status(403).json({ error: 'No autorizado.' })
+      }
+      const pdfBytes = await buildReceiptPdf(receipt.payload)
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `attachment; filename="recibo-${receipt.order.folio}.pdf"`)
+      res.send(Buffer.from(pdfBytes))
+    } catch (err) {
+      console.error('Error al generar recibo:', err)
+      res.status(500).json({ error: err.message || 'No se pudo generar el PDF.' })
     }
   })
 
